@@ -341,3 +341,35 @@ export const LogJournalEntrySchema = {
     entry_timestamp: z.string(),
   },
 };
+
+export const CaptureInboxSchema = {
+  inputSchema: {
+    title: z
+      .string()
+      .min(1)
+      .describe('Short title. Becomes the filename, in Title Case — do not include a path.'),
+    body: z.string().describe('The note content, as markdown.'),
+    tags: z.array(z.string()).optional().describe('Optional lowercase, hyphenated tags.'),
+  },
+  outputSchema: {
+    success: z.boolean(),
+    path: z.string(),
+    title: z.string(),
+  },
+};
+
+export const AddTaskSchema = {
+  inputSchema: {
+    text: z.string().min(1).describe('The task, as a single short line.'),
+    section: z
+      .string()
+      .optional()
+      .describe('Heading to file it under, e.g. "## Next". Defaults to the configured section.'),
+  },
+  outputSchema: {
+    success: z.boolean(),
+    path: z.string(),
+    section: z.string(),
+    entry: z.string(),
+  },
+};

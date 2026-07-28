@@ -11,7 +11,7 @@
 
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
-import { GitVaultManager } from '@/services/git-vault-manager';
+import { createVaultManager } from '@/services/vault-factory';
 import { registerTools } from '@/mcp/tool-registrations';
 import { registerResources } from '@/mcp/resource-registrations';
 import { loadEnv, ensureCoreEnvVars } from '@/env';
@@ -36,13 +36,7 @@ try {
 
 const LOCAL_VAULT_PATH = process.env.LOCAL_VAULT_PATH || './vault-local';
 
-const vaultManager = new GitVaultManager({
-  repoUrl: process.env.VAULT_REPO!,
-  branch: process.env.VAULT_BRANCH!,
-  gitToken: process.env.GIT_TOKEN!,
-  gitUsername: process.env.GIT_USERNAME,
-  vaultPath: LOCAL_VAULT_PATH,
-});
+const vaultManager = createVaultManager(LOCAL_VAULT_PATH);
 
 const mcpServer = new McpServer({
   name: 'obsidian-mcp',

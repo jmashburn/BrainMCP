@@ -80,6 +80,17 @@ export function getLogger(): Logger {
   return loggerInstance;
 }
 
+/**
+ * Whether a logger has been configured.
+ *
+ * Lets code that may run outside a server entry point (tool registration, which
+ * the test harness drives directly) emit diagnostics when a logger exists
+ * without throwing when one doesn't.
+ */
+export function isLoggerConfigured(): boolean {
+  return loggerInstance !== null;
+}
+
 // Convenience export
 export const logger = {
   get debug() {

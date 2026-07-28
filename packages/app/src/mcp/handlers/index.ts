@@ -4,3 +4,4 @@ export * from './directory-handlers';
 export * from './search-handlers';
 export * from './tag-handlers';
 export * from './journal-handlers';
+export * from './convention-handlers';

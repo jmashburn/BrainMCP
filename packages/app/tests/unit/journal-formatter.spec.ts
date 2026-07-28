@@ -20,3 +20,43 @@ describe('formatJournalEntry', () => {
     expect(output).toContain('**Project:** [[Projects/Testing Strategy]]');
   });
 });
+
+describe('formatJournalEntry with bullet style', () => {
+  const timestamp = new Date('2026-07-28T18:30:00Z');
+
+  it('renders a single dated bullet', () => {
+    const output = formatJournalEntry(
+      {
+        timestamp,
+        activityType: 'development',
+        summary: 'Wired up the convention layer.',
+        keyTopics: ['MCP', 'Obsidian'],
+      },
+      'bullet',
+    );
+
+    expect(output).toBe('- 2026-07-28 — Wired up the convention layer.\n');
+  });
+
+  it('omits the section furniture the detailed style adds', () => {
+    const output = formatJournalEntry(
+      { timestamp, activityType: 'research', summary: 'Read the spec.', keyTopics: ['mcp'] },
+      'bullet',
+    );
+
+    expect(output).not.toContain('###');
+    expect(output).not.toContain('**Topics:**');
+    expect(output).not.toContain('---');
+  });
+
+  it('still defaults to the detailed style', () => {
+    const output = formatJournalEntry({
+      timestamp,
+      activityType: 'development',
+      summary: 'x',
+      keyTopics: [],
+    });
+
+    expect(output).toContain('### 6:30 PM - Development');
+  });
+});

@@ -12,6 +12,8 @@ export interface VaultConfig {
   gitToken: string;
   gitUsername?: string;
   vaultPath: string;
+  /** Vault-relative hooks dir (e.g. '.githooks'), applied as core.hooksPath on clone. */
+  hooksPath?: string;
 }
 
 export class GitVaultManager implements VaultManager {
@@ -100,6 +102,22 @@ export class GitVaultManager implements VaultManager {
     const vaultGit = this.createGitInstance(this.config.vaultPath);
     await vaultGit.addConfig('user.name', 'Obsidian MCP Server');
     await vaultGit.addConfig('user.email', 'mcp@obsidian.local');
+
+    // Let a vault carry its own hooks (e.g. .githooks/pre-commit running gitleaks).
+    // Without this, commits made here bypass every check the vault enforces locally,
+    // and a remote client becomes the one writer nothing scans. simple-git shells out
+    // to git, so hooks run normally and a failing hook makes commit() throw.
+    if (this.config.hooksPath) {
+      const hooksDir = path.join(this.config.vaultPath, this.config.hooksPath);
+      if (existsSync(hooksDir)) {
+        await vaultGit.addConfig('core.hooksPath', this.config.hooksPath);
+        logger.info('Vault hooks enabled', { hooksPath: this.config.hooksPath });
+      } else {
+        logger.warn('VAULT_HOOKS_PATH set but not present in vault; commits will be unchecked', {
+          hooksPath: this.config.hooksPath,
+        });
+      }
+    }
   }
 
   /**

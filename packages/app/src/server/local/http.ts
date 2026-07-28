@@ -12,7 +12,7 @@
 
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import express from 'express';
-import { GitVaultManager } from '@/services/git-vault-manager';
+import { createVaultManager } from '@/services/vault-factory';
 import { registerTools } from '@/mcp/tool-registrations';
 import { registerResources } from '@/mcp/resource-registrations';
 import { registerOAuthRoutes } from '@/server/shared/oauth-routes';
@@ -51,13 +51,7 @@ if (!OAUTH_CLIENT_SECRET) {
   process.exit(1);
 }
 
-const vaultManager = new GitVaultManager({
-  repoUrl: process.env.VAULT_REPO!,
-  branch: process.env.VAULT_BRANCH!,
-  gitToken: process.env.GIT_TOKEN!,
-  gitUsername: process.env.GIT_USERNAME,
-  vaultPath: LOCAL_VAULT_PATH,
-});
+const vaultManager = createVaultManager(LOCAL_VAULT_PATH);
 
 const mcpServer = new McpServer({
   name: 'obsidian-mcp',

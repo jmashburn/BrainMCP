@@ -3,6 +3,8 @@ import type { VaultManager } from '@/services/vault-manager';
 import * as toolDefs from '@/mcp/tool-definitions';
 import * as handlers from '@/mcp/handlers';
 import type { ToolResponse } from '@/mcp/handlers';
+import { applyToolAllowlist } from '@/mcp/tool-allowlist';
+import { loadVaultConventionsConfig } from '@/services/vault-conventions';
 
 type McpToolResult = {
   content: Array<{ type: 'text'; text: string }>;
@@ -28,7 +30,59 @@ function formatToolResult(result: ToolResponse): McpToolResult {
   return response;
 }
 
-export function registerTools(server: McpServer, getVaultManager: () => VaultManager): void {
+export function registerTools(rawServer: McpServer, getVaultManager: () => VaultManager): void {
+  // Every registerTool call below goes through the allowlist. Filtering here
+  // rather than at each call site means a tool added later is covered by
+  // default instead of being exposed until someone remembers to gate it.
+  const server = applyToolAllowlist(rawServer);
+
+  server.registerTool(
+    'capture-inbox',
+    {
+      title: 'Capture to Inbox',
+      description:
+        'Capture a thought as a new inbox note. Supply a title and body as prose; the server ' +
+        'derives the filename, folder, frontmatter, and template so the note matches the ' +
+        "vault's conventions. Prefer this over create-note for anything unsorted.",
+      inputSchema: toolDefs.CaptureInboxSchema.inputSchema,
+      outputSchema: toolDefs.CaptureInboxSchema.outputSchema,
+      annotations: {
+        readOnlyHint: false,
+        destructiveHint: false,
+        idempotentHint: false,
+        openWorldHint: true,
+      },
+    },
+    async args => {
+      const vault = getVaultManager();
+      const result = await handlers.handleCaptureInbox(vault, args, loadVaultConventionsConfig());
+      return formatToolResult(result);
+    },
+  );
+
+  server.registerTool(
+    'add-task',
+    {
+      title: 'Add Task',
+      description:
+        "Add a dated, unchecked task to the vault's task list under a heading. Prefer this " +
+        'over editing the task note directly, so formatting and placement stay consistent.',
+      inputSchema: toolDefs.AddTaskSchema.inputSchema,
+      outputSchema: toolDefs.AddTaskSchema.outputSchema,
+      annotations: {
+        readOnlyHint: false,
+        destructiveHint: false,
+        idempotentHint: false,
+        openWorldHint: true,
+      },
+    },
+    async args => {
+      const vault = getVaultManager();
+      const result = await handlers.handleAddTask(vault, args, loadVaultConventionsConfig());
+      return formatToolResult(result);
+    },
+  );
+
   server.registerTool(
     'read-note',
     {
@@ -175,6 +229,7 @@ export function registerTools(server: McpServer, getVaultManager: () => VaultMan
         journalPathTemplate: process.env.JOURNAL_PATH_TEMPLATE!,
         journalActivitySection: process.env.JOURNAL_ACTIVITY_SECTION!,
         journalFileTemplate: process.env.JOURNAL_FILE_TEMPLATE!,
+        journalEntryStyle: process.env.JOURNAL_ENTRY_STYLE as 'detailed' | 'bullet' | undefined,
       };
       const result = await handlers.handleAppendContent(vault, args, config);
       return formatToolResult(result);
@@ -202,6 +257,7 @@ export function registerTools(server: McpServer, getVaultManager: () => VaultMan
         journalPathTemplate: process.env.JOURNAL_PATH_TEMPLATE!,
         journalActivitySection: process.env.JOURNAL_ACTIVITY_SECTION!,
         journalFileTemplate: process.env.JOURNAL_FILE_TEMPLATE!,
+        journalEntryStyle: process.env.JOURNAL_ENTRY_STYLE as 'detailed' | 'bullet' | undefined,
       };
       const result = await handlers.handlePatchContent(vault, args, config);
       return formatToolResult(result);
@@ -418,6 +474,7 @@ export function registerTools(server: McpServer, getVaultManager: () => VaultMan
         journalPathTemplate: process.env.JOURNAL_PATH_TEMPLATE!,
         journalActivitySection: process.env.JOURNAL_ACTIVITY_SECTION!,
         journalFileTemplate: process.env.JOURNAL_FILE_TEMPLATE!,
+        journalEntryStyle: process.env.JOURNAL_ENTRY_STYLE as 'detailed' | 'bullet' | undefined,
       };
       const result = await handlers.handleLogJournalEntry(vault, args, config);
       return formatToolResult(result);

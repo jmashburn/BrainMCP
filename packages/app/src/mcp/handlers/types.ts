@@ -12,4 +12,5 @@ export interface JournalConfig {
   journalPathTemplate: string;
   journalActivitySection: string;
   journalFileTemplate: string;
+  journalEntryStyle?: 'detailed' | 'bullet';
 }

@@ -27,14 +27,17 @@ export async function handleLogJournalEntry(
 
     let content = await getOrInitializeContent(vault, journalPath, config);
 
-    const entry = formatJournalEntry({
-      timestamp: now,
-      activityType: args.activity_type,
-      summary: args.summary,
-      keyTopics: args.key_topics,
-      outputs: args.outputs,
-      project: args.project,
-    });
+    const entry = formatJournalEntry(
+      {
+        timestamp: now,
+        activityType: args.activity_type,
+        summary: args.summary,
+        keyTopics: args.key_topics,
+        outputs: args.outputs,
+        project: args.project,
+      },
+      config.journalEntryStyle,
+    );
 
     content = insertUnderSection(content, config.journalActivitySection, entry);
 

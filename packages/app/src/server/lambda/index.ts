@@ -7,7 +7,7 @@
 
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { VaultManager } from '@/services/vault-manager';
-import { GitVaultManager } from '@/services/git-vault-manager';
+import { createVaultManager } from '@/services/vault-factory';
 import { detectStartType, getInvocationCount, cleanupOldCache } from './cache.js';
 import { registerTools } from '@/mcp/tool-registrations';
 import { registerResources } from '@/mcp/resource-registrations';
@@ -49,15 +49,7 @@ let vaultManager: VaultManager | null = null;
 
 function getVaultManager(): VaultManager {
   if (!vaultManager) {
-    const config = {
-      repoUrl: process.env.VAULT_REPO!,
-      branch: process.env.VAULT_BRANCH!,
-      gitToken: process.env.GIT_TOKEN!,
-      gitUsername: process.env.GIT_USERNAME,
-      vaultPath: '/tmp/obsidian-vault',
-    };
-
-    vaultManager = new GitVaultManager(config);
+    vaultManager = createVaultManager('/tmp/obsidian-vault');
   }
 
   return vaultManager;

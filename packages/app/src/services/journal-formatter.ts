@@ -4,6 +4,8 @@
  * Formats journal entries for the log-journal-entry tool
  */
 
+import { formatJournalBullet } from './note-conventions';
+
 export interface JournalEntryData {
   timestamp: Date;
   activityType:
@@ -20,9 +22,26 @@ export interface JournalEntryData {
 }
 
 /**
+ * How a journal entry is rendered.
+ *
+ * 'detailed' is the original: a timestamped subheading with topics, outputs
+ * and project. 'bullet' is a single dated line, for vaults whose journals are
+ * a running list rather than a set of sections. The default stays 'detailed'
+ * so existing deployments are unaffected.
+ */
+export type JournalEntryStyle = 'detailed' | 'bullet';
+
+/**
  * Format a journal entry in Obsidian markdown format
  */
-export function formatJournalEntry(data: JournalEntryData): string {
+export function formatJournalEntry(
+  data: JournalEntryData,
+  style: JournalEntryStyle = 'detailed',
+): string {
+  if (style === 'bullet') {
+    return formatJournalBullet(data.timestamp, data.summary) + '\n';
+  }
+
   const time = formatTime(data.timestamp);
   const activityLabel = capitalizeFirst(data.activityType);
 
