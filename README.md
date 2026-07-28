@@ -198,6 +198,20 @@ EXPOSED_TOOLS=read-note,read-notes,search-vault,capture-inbox,add-task,log-journ
 Skipped tools are absent from `tools/list` entirely, not merely refused on call
 — a tool the model cannot see is one it cannot be talked into using.
 
+### Secret scanning in the image
+
+The published image includes `gitleaks`, pinned, so a vault whose hook shells
+out to it works without extra setup. Because such hooks fail closed, a missing
+binary presents as _every write failing_ rather than scanning being off — the
+entrypoint warns at startup when `VAULT_HOOKS_PATH` is set and `gitleaks` is
+absent, so the cause is visible before the first write rather than after.
+
+Build for a different version or architecture:
+
+```bash
+docker build --build-arg GITLEAKS_VERSION=8.30.1 -t brain-mcp .
+```
+
 ### Vault-owned commit hooks
 
 The server clones the vault and commits locally, so the vault's own hooks can
@@ -211,6 +225,22 @@ With a secret-scanning hook in the vault, a commit made by a remote client is
 checked exactly as a local commit would be — one hook definition rather than a
 second implementation to drift. The hook binary must be present in the runtime
 image.
+
+### Verifying a build
+
+```bash
+npm test                  # unit + behaviour, in-memory vault
+npm run test:e2e          # real clone, real MCP protocol, from source
+docker build -t brain-mcp:test .
+npm run test:e2e:docker   # the same checks against the built image
+```
+
+`test:e2e` builds a throwaway bare repo and vault fixture in a temp dir, then
+drives the stdio server over the real protocol: clone, `core.hooksPath`, commit
+and push, the convention tools, both guards, and a random token being refused by
+the vault's own hook. The `:docker` variant runs the identical checks against a
+built image, which is where packaging problems surface — a source-tree run
+cannot catch a missing runtime dependency or a missing `gitleaks` binary.
 
 ## Vault Conventions
 

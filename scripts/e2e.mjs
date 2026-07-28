@@ -1,6 +1,11 @@
 /**
  * End-to-end check against a real git clone.
  *
+ * Set E2E_DOCKER_IMAGE to run the server from a built image instead of tsx —
+ * the same checks against the artefact that actually gets deployed, which is
+ * where packaging problems (missing runtime deps, a missing gitleaks binary)
+ * show up and a source-tree run cannot.
+ *
  * The unit and behaviour suites run against an in-memory vault, so the git path
  * — clone, core.hooksPath, commit, push — and the guards' behaviour through a
  * real MCP client are not covered by them. This drives the actual stdio server
@@ -86,39 +91,64 @@ function buildFixture() {
 
 buildFixture();
 console.log(`fixture: ${E2E}`);
+if (process.env.E2E_DOCKER_IMAGE) console.log(`server: docker ${process.env.E2E_DOCKER_IMAGE}`);
 
 // ----------------------------------------------------------------- server ---
 
-const transport = new StdioClientTransport({
-  // cwd must be packages/app so tsx resolves the '@/' aliases, as `npm run dev` does.
-  command: 'npx',
-  args: ['tsx', 'src/server/local/stdio.ts'],
-  cwd: path.join(REPO, 'packages', 'app'),
-  env: {
-    ...process.env,
-    // Hooks inherit the server's environment, so whatever a hook needs must be
-    // findable on PATH here.
-    PATH: process.env.PATH,
-    VAULT_REPO: `file://${E2E}/vault.git`,
-    VAULT_BRANCH: 'main',
-    GIT_TOKEN: 'unused-for-file-urls',
-    GIT_USERNAME: 'e2e',
-    LOCAL_VAULT_PATH: `${E2E}/clone`,
-    VAULT_HOOKS_PATH: '.githooks',
-    JOURNAL_PATH_TEMPLATE: '70-Journal/{{date}}.md',
-    JOURNAL_DATE_FORMAT: 'YYYY-MM-DD',
-    JOURNAL_ACTIVITY_SECTION: '## Claude session',
-    JOURNAL_FILE_TEMPLATE: '90-Meta/templates/daily.md',
-    JOURNAL_ENTRY_STYLE: 'bullet',
-    TEMPLATES_DIR: '90-Meta/templates',
-    INBOX_DIR: '00-Inbox',
-    INBOX_TEMPLATE: 'reference.md',
-    TASKS_PATH: '10-Tasks/TASKS.md',
-    TASKS_DEFAULT_SECTION: '## Now',
-    NOTE_SOURCE: 'e2e-client',
-    EXPOSED_TOOLS: 'read-note,search-vault,capture-inbox,add-task,log-journal-entry,create-note',
-  },
-});
+const IMAGE = process.env.E2E_DOCKER_IMAGE;
+
+// Hooks inherit the server's environment, so whatever a hook needs must be
+// findable on PATH there. In the container that's the image's own PATH.
+const serverEnv = {
+  VAULT_REPO: `file://${E2E}/vault.git`,
+  VAULT_BRANCH: 'main',
+  GIT_TOKEN: 'unused-for-file-urls',
+  GIT_USERNAME: 'e2e',
+  LOCAL_VAULT_PATH: `${E2E}/clone`,
+  VAULT_HOOKS_PATH: '.githooks',
+  JOURNAL_PATH_TEMPLATE: '70-Journal/{{date}}.md',
+  JOURNAL_DATE_FORMAT: 'YYYY-MM-DD',
+  JOURNAL_ACTIVITY_SECTION: '## Claude session',
+  JOURNAL_FILE_TEMPLATE: '90-Meta/templates/daily.md',
+  JOURNAL_ENTRY_STYLE: 'bullet',
+  TEMPLATES_DIR: '90-Meta/templates',
+  INBOX_DIR: '00-Inbox',
+  INBOX_TEMPLATE: 'reference.md',
+  TASKS_PATH: '10-Tasks/TASKS.md',
+  TASKS_DEFAULT_SECTION: '## Now',
+  NOTE_SOURCE: 'e2e-client',
+  EXPOSED_TOOLS: 'read-note,search-vault,capture-inbox,add-task,log-journal-entry,create-note',
+};
+
+// Mount the fixture at the same path inside the container so file:// URLs and
+// LOCAL_VAULT_PATH mean the same thing on both sides. Run as the invoking user
+// so pushed objects aren't left root-owned in the host fixture.
+const dockerArgs = () => [
+  'run',
+  '--rm',
+  '-i',
+  '--user',
+  `${process.getuid()}:${process.getgid()}`,
+  '-e',
+  'HOME=/tmp',
+  '-v',
+  `${E2E}:${E2E}`,
+  ...Object.entries(serverEnv).flatMap(([k, v]) => ['-e', `${k}=${v}`]),
+  IMAGE,
+  'stdio',
+];
+
+const transport = new StdioClientTransport(
+  IMAGE
+    ? { command: 'docker', args: dockerArgs(), env: { PATH: process.env.PATH } }
+    : {
+        // cwd must be packages/app so tsx resolves the '@/' aliases, as `npm run dev` does.
+        command: 'npx',
+        args: ['tsx', 'src/server/local/stdio.ts'],
+        cwd: path.join(REPO, 'packages', 'app'),
+        env: { ...process.env, ...serverEnv },
+      },
+);
 
 const client = new Client({ name: 'e2e', version: '1.0.0' }, { capabilities: {} });
 await client.connect(transport);

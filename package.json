@@ -44,7 +44,8 @@
     "format:check": "prettier --check .",
     "test": "npm run test --workspace @obsidian-mcp/app",
     "test:watch": "npm run test:watch --workspace @obsidian-mcp/app",
-    "test:e2e": "node scripts/e2e.mjs"
+    "test:e2e": "node scripts/e2e.mjs",
+    "test:e2e:docker": "E2E_DOCKER_IMAGE=${E2E_DOCKER_IMAGE:-brain-mcp:test} node scripts/e2e.mjs"
   },
   "devDependencies": {
     "aws-cdk": "^2.172.0",
