@@ -8,6 +8,8 @@ A Model Context Protocol (MCP) server for git-backed Obsidian vaults. Access and
 
 - [Overview](#overview)
 - [Quick Start](#quick-start)
+- [Vault Guards](#vault-guards)
+- [Vault Conventions](#vault-conventions)
 - [How It Works](#how-it-works)
 - [Prerequisites](#prerequisites)
 - [Deployment Options](#deployment-options)
@@ -22,7 +24,7 @@ A Model Context Protocol (MCP) server for git-backed Obsidian vaults. Access and
 
 ## Overview
 
-This MCP server provides **18 tools** and **1 resource** to interact with your Obsidian vault through LLMs:
+This MCP server provides **20 tools** and **1 resource** to interact with your Obsidian vault through LLMs:
 
 Tool Categories:
 
@@ -31,6 +33,7 @@ Tool Categories:
 - Search (1) - Fuzzy search with relevance scoring and exact matching
 - Tag Management (4) - Add, remove, rename, and manage tags
 - Journal Logging (1) - Auto-log LLM activity to daily journals
+- Convention-aware (2) - Capture to inbox and add tasks, with structure enforced server-side
 
 Deployment Modes:
 
@@ -149,6 +152,130 @@ Windows: `%APPDATA%\Claude\claude_desktop_config.json`
 ```
 
 </details>
+
+## Vault Guards
+
+Exposing a vault to a remote client is a different threat model from a local
+stdio server driven by one trusted process. Three guards, all opt-out rather
+than opt-in, because an operator who never reads this section is exactly the
+one who needs them.
+
+### Path containment
+
+Every path is normalised and required to stay inside the vault. A client
+supplying `../../.ssh/authorized_keys` is refused for reads and writes alike.
+Enforced at the `VaultManager` boundary, so handlers added later inherit it.
+
+### Protected paths
+
+Some files govern how agents behave — instructions, conventions, commit hooks.
+A client able to rewrite those rewrites the rules every _other_ client follows,
+and can disable the scanning that guards the vault. They are refused for writes
+and remain readable.
+
+```bash
+# Defaults: CLAUDE.md, AGENTS.md, .githooks/**, .github/**, .gitignore, .gitattributes
+VAULT_PROTECTED_PATHS=CLAUDE.md,90-Meta/**,.githooks/**
+```
+
+Patterns support `*` (within a segment) and `**` (across segments), matched
+case-insensitively so a vault on a case-insensitive filesystem cannot be
+reached by a differently-cased spelling.
+
+Whatever files are published as guidance (see below) are protected
+automatically. Naming a file as the rules and leaving it writable is a gap that
+would otherwise appear silently.
+
+### Tool allowlist
+
+Registering all tools suits a trusted local client, not an internet-reachable
+server. `EXPOSED_TOOLS` is an allowlist; unset registers everything.
+
+```bash
+EXPOSED_TOOLS=read-note,read-notes,search-vault,capture-inbox,add-task,log-journal-entry
+```
+
+Skipped tools are absent from `tools/list` entirely, not merely refused on call
+— a tool the model cannot see is one it cannot be talked into using.
+
+### Vault-owned commit hooks
+
+The server clones the vault and commits locally, so the vault's own hooks can
+run against server-side writes:
+
+```bash
+VAULT_HOOKS_PATH=.githooks
+```
+
+With a secret-scanning hook in the vault, a commit made by a remote client is
+checked exactly as a local commit would be — one hook definition rather than a
+second implementation to drift. The hook binary must be present in the runtime
+image.
+
+## Vault Conventions
+
+Vaults carry conventions — frontmatter, filename casing, templates — that a
+capable model follows when told and a weaker one silently doesn't. Given a
+generic `create-note`, a weak client writes notes with no frontmatter and
+inconsistent names, degrading the vault faster than it adds to it.
+
+The convention-aware tools take typed parameters and render the note
+server-side, so a non-conforming note is not expressible:
+
+| Tool            | Behaviour                                                                                                                                      |
+| --------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| `capture-inbox` | Title becomes a Title Case filename in the inbox folder; frontmatter generated; template filled. Refuses to overwrite an existing note.        |
+| `add-task`      | Inserts a dated `- [ ] …` after the last task in the named section, never spilling past the next heading, and clears a `_(placeholder)_` line. |
+
+**Templates are read from the vault at runtime**, not hardcoded. Frontmatter is
+filled only where missing, so the template stays authoritative — editing a
+template changes what the server writes, with no redeploy and no second copy to
+drift.
+
+```bash
+TEMPLATES_DIR=90-Meta/templates
+INBOX_DIR=00-Inbox
+INBOX_TEMPLATE=reference.md
+TASKS_PATH=10-Tasks/TASKS.md
+TASKS_DEFAULT_SECTION=## Now
+```
+
+A missing template is not fatal — capture still succeeds with generated
+frontmatter. Losing a thought because a template was renamed is the worse
+failure.
+
+### Journal entry style
+
+```bash
+JOURNAL_ENTRY_STYLE=bullet   # or 'detailed' (default)
+```
+
+`detailed` is a timestamped subheading with topics, outputs and project.
+`bullet` is a single dated line, for journals kept as a running list.
+
+### Provenance
+
+```bash
+NOTE_SOURCE=chatgpt
+```
+
+Recorded as `source:` in frontmatter of notes the server writes. This matters
+more than it looks: a note written by one model is later read by another _as
+memory_, and memory is trusted. Marking origin lets a reader treat third-party
+content as data rather than instruction.
+
+### Guidance resource
+
+The `vault-readme` resource serves the vault's own organisation guidelines.
+
+```bash
+# Defaults to README.md,CLAUDE.md,AGENTS.md — all that exist are concatenated
+VAULT_GUIDANCE_FILES=CLAUDE.md,90-Meta/conventions.md
+```
+
+All matching files are concatenated rather than taking the first: a vault that
+splits protocol from conventions would otherwise have clients following half
+the rules.
 
 ## How It Works
 

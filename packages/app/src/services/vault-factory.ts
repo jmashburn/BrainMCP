@@ -8,6 +8,7 @@
 
 import { GitVaultManager } from './git-vault-manager';
 import { guardVaultManager, parseProtectedPaths } from './path-guard';
+import { guidanceFiles } from './vault-conventions';
 import type { VaultManager } from './vault-manager';
 import { logger } from '@/utils/logger';
 
@@ -38,7 +39,14 @@ export function createVaultManager(vaultPath: string): VaultManager {
   });
 
   const configured = parseProtectedPaths(process.env.VAULT_PROTECTED_PATHS);
-  const protectedPaths = configured.length > 0 ? configured : DEFAULT_PROTECTED_PATHS;
+  const basePaths = configured.length > 0 ? configured : DEFAULT_PROTECTED_PATHS;
+
+  // Whatever files the vault publishes as its guidance are, by definition, the
+  // ones a client must not rewrite: they are the rules every other client
+  // follows. Protecting them separately from naming them would mean the two
+  // lists drift, and the failure is silent — guidance stays readable and
+  // quietly becomes writable.
+  const protectedPaths = Array.from(new Set([...basePaths, ...guidanceFiles()]));
 
   logger.info('Vault protection enabled', {
     protectedPaths,

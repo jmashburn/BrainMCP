@@ -1,25 +1,6 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { VaultManager } from '@/services/vault-manager';
-
-/**
- * Files describing how the vault is organised, exposed as a resource so a
- * client can read the conventions before writing.
- *
- * Configurable because 'README.md' is only one convention for this — vaults
- * built around an agent commonly use CLAUDE.md or AGENTS.md, and a hardcoded
- * filename silently returns "not found" for all of them, leaving the client
- * with no guidance and no indication any was on offer.
- */
-function guidanceFiles(): string[] {
-  const configured = process.env.VAULT_GUIDANCE_FILES;
-  if (configured && configured.trim() !== '') {
-    return configured
-      .split(',')
-      .map(s => s.trim())
-      .filter(s => s.length > 0);
-  }
-  return ['README.md', 'CLAUDE.md', 'AGENTS.md'];
-}
+import { guidanceFiles } from '@/services/vault-conventions';
 
 /**
  * Register MCP resources with the server
