@@ -1,0 +1,46 @@
+#!/bin/sh
+#
+# Block commits that contain secrets.
+#
+# This repo configures git to use this directory (core.hooksPath=.githooks)
+# rather than any global hooks path. A fork should be governed by its own
+# rules: an upstream that prints a startup banner with console.log is not a
+# defect, and a personal debug-statement policy shouldn't block work here.
+#
+# Secret scanning is different — it is a property of "this repo will hold
+# .env examples and deploy config", not of anyone's house style.
+set -u
+
+if ! command -v gitleaks >/dev/null 2>&1; then
+  echo ""
+  echo "  ❌ gitleaks is not installed, so staged changes can't be scanned."
+  echo ""
+  echo "  Install it:   dot --tools"
+  echo "  or directly:  https://github.com/gitleaks/gitleaks#installing"
+  echo ""
+  echo "  This fails closed on purpose: a scanner that silently passes when"
+  echo "  it isn't installed is worse than none, because it looks like it ran."
+  echo ""
+  exit 1
+fi
+
+# `git --staged` is the 8.19+ form; `protect --staged` is the older one.
+if gitleaks git --help >/dev/null 2>&1; then
+  scan="gitleaks git --staged --no-banner --redact"
+else
+  scan="gitleaks protect --staged --no-banner --redact"
+fi
+
+if ! $scan >/dev/null 2>&1; then
+  echo ""
+  echo "  ❌ gitleaks found secrets in the staged changes:"
+  echo ""
+  $scan 2>&1 | sed 's/^/     /'
+  echo ""
+  echo "  Nothing has been committed. Remove the secret, or if it is a false"
+  echo "  positive add a 'gitleaks:allow' comment or a .gitleaksignore entry."
+  echo ""
+  exit 1
+fi
+
+exit 0
