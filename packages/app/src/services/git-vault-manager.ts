@@ -25,7 +25,14 @@ export class GitVaultManager implements VaultManager {
 
   private createGitInstance(baseDir?: string): SimpleGit {
     const instance = baseDir ? simpleGit(baseDir) : simpleGit();
+
+    // simple-git's env(object) REPLACES the environment rather than merging, so
+    // passing only GIT_TERMINAL_PROMPT leaves git with no PATH: it falls back to
+    // /usr/bin:/bin and cannot find anything installed elsewhere. That silently
+    // breaks credential helpers, gpg signing, ssh, and — since hooks inherit
+    // this environment — any hook the vault relies on.
     return instance.env({
+      ...process.env,
       GIT_TERMINAL_PROMPT: '0',
     });
   }

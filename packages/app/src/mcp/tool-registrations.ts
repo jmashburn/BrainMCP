@@ -9,6 +9,7 @@ import { loadVaultConventionsConfig } from '@/services/vault-conventions';
 type McpToolResult = {
   content: Array<{ type: 'text'; text: string }>;
   structuredContent?: Record<string, unknown>;
+  isError?: boolean;
 };
 
 function formatToolResult(result: ToolResponse): McpToolResult {
@@ -25,6 +26,14 @@ function formatToolResult(result: ToolResponse): McpToolResult {
       typeof result.data === 'object' && result.data !== null
         ? (result.data as Record<string, unknown>)
         : { value: result.data };
+  }
+
+  // A tool declaring an outputSchema must return structuredContent, and a
+  // failure has none to give. Without isError the SDK rejects the response as
+  // protocol-invalid (-32602), so the client sees "no structured content"
+  // instead of the actual error — every failure path looks like the same bug.
+  if (!result.success) {
+    response.isError = true;
   }
 
   return response;

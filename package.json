@@ -43,7 +43,8 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "test": "npm run test --workspace @obsidian-mcp/app",
-    "test:watch": "npm run test:watch --workspace @obsidian-mcp/app"
+    "test:watch": "npm run test:watch --workspace @obsidian-mcp/app",
+    "test:e2e": "node scripts/e2e.mjs"
   },
   "devDependencies": {
     "aws-cdk": "^2.172.0",
