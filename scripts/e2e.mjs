@@ -117,7 +117,8 @@ const serverEnv = {
   TASKS_PATH: '10-Tasks/TASKS.md',
   TASKS_DEFAULT_SECTION: '## Now',
   NOTE_SOURCE: 'e2e-client',
-  EXPOSED_TOOLS: 'read-note,search-vault,capture-inbox,add-task,log-journal-entry,create-note',
+  EXPOSED_TOOLS:
+    'read-note,search-vault,list-files-in-vault,capture-inbox,add-task,log-journal-entry,create-note',
 };
 
 // Mount the fixture at the same path inside the container so file:// URLs and
@@ -241,6 +242,17 @@ try {
       !journal.includes('###'),
     journal.split('\n').find(l => l.startsWith('- 2')) ?? '(no bullet)',
   );
+
+  // Vault-root operations pass an empty path. Exercised here because a guard
+  // that rejects empty paths breaks listing and search while every write-path
+  // test still passes.
+  console.log('\n--- vault-root reads ---');
+  const listed = await call('list-files-in-vault', {});
+  check('list-files-in-vault works', !listed.isError, listed.text.slice(0, 80));
+  check('listing includes a seeded note', /TASKS\.md/.test(listed.text));
+  const found = await call('search-vault', { query: 'Organisation' });
+  check('search-vault works', !found.isError, found.text.slice(0, 80));
+  check('search finds README content', /README/i.test(found.text));
 
   console.log('\n--- protected paths ---');
   for (const p of ['CLAUDE.md', 'README.md', '.githooks/pre-commit']) {

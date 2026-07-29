@@ -157,3 +157,38 @@ describe('guardVaultManager', () => {
     await expect(guarded.readFile('../../etc/passwd')).rejects.toThrow(PathNotAllowedError);
   });
 });
+
+describe('vault-root operations', () => {
+  it('allows an empty path, which is how listing the whole vault is expressed', async () => {
+    const vault = makeVault();
+    const guarded = guardVaultManager(vault, PROTECTED);
+
+    await guarded.listFiles('');
+
+    expect(vault.listFiles).toHaveBeenCalledWith('');
+  });
+
+  it('allows an absent path for the same reason', async () => {
+    const vault = makeVault();
+    const guarded = guardVaultManager(vault, PROTECTED);
+
+    await (guarded as unknown as { listFiles: (p?: string) => Promise<unknown> }).listFiles();
+
+    expect(vault.listFiles).toHaveBeenCalledWith(undefined);
+  });
+
+  it('still contains a non-empty listing path', async () => {
+    const vault = makeVault();
+    const guarded = guardVaultManager(vault, PROTECTED);
+
+    await expect(guarded.listFiles('../../etc')).rejects.toThrow(PathNotAllowedError);
+  });
+
+  it('does not extend the empty-path allowance to writes', async () => {
+    const vault = makeVault();
+    const guarded = guardVaultManager(vault, PROTECTED);
+
+    await expect(guarded.writeFile('', 'x')).rejects.toThrow(PathNotAllowedError);
+    expect(vault.writeFile).not.toHaveBeenCalled();
+  });
+});
