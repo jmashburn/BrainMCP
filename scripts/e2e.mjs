@@ -119,6 +119,13 @@ const serverEnv = {
   NOTE_SOURCE: 'e2e-client',
   EXPOSED_TOOLS:
     'read-note,search-vault,list-files-in-vault,capture-inbox,add-task,log-journal-entry,create-note',
+  // Pinned rather than left to the defaults: these two decide what the protected
+  // -path assertions below are actually asserting, and a test that reads its
+  // security-relevant inputs from the ambient environment is testing the
+  // environment. VAULT_GUIDANCE_FILES is unioned into the protected set, so the
+  // README.md case only means something if this names README.md.
+  VAULT_GUIDANCE_FILES: 'README.md,CLAUDE.md,AGENTS.md',
+  VAULT_PROTECTED_PATHS: '',
 };
 
 // Mount the fixture at the same path inside the container so file:// URLs and
@@ -143,11 +150,22 @@ const transport = new StdioClientTransport(
   IMAGE
     ? { command: 'docker', args: dockerArgs(), env: { PATH: process.env.PATH } }
     : {
-        // cwd must be packages/app so tsx resolves the '@/' aliases, as `npm run dev` does.
+        // Run from the fixture dir, NOT the repo: loadEnv() walks up from cwd
+        // for a .env, so a developer's local .env would otherwise supply every
+        // var serverEnv does not set — silently reconfiguring the server under
+        // test. That is how a passing suite turns into a fake security failure.
+        // The fixture is under the temp dir, which has no .env above it.
+        // '@/' aliases still resolve because --tsconfig names the app config
+        // explicitly rather than relying on cwd.
         command: 'npx',
-        args: ['tsx', 'src/server/local/stdio.ts'],
-        cwd: path.join(REPO, 'packages', 'app'),
-        env: { ...process.env, ...serverEnv },
+        args: [
+          'tsx',
+          '--tsconfig',
+          path.join(REPO, 'packages', 'app', 'tsconfig.json'),
+          path.join(REPO, 'packages', 'app', 'src', 'server', 'local', 'stdio.ts'),
+        ],
+        cwd: E2E,
+        env: { PATH: process.env.PATH, HOME: process.env.HOME, ...serverEnv },
       },
 );
 
