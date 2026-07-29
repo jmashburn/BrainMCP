@@ -44,3 +44,8 @@ coverage/
 # Temporary files
 *.tmp
 .cache/
+
+# Local MCP client config — pins an absolute path to this machine's checkout,
+# so a committed copy would be wrong on every other machine (see ADR-001 in the
+# vault: the Mac and WSL clones resolve to different paths).
+.mcp.json
