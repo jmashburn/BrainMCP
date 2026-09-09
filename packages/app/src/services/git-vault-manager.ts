@@ -148,16 +148,33 @@ export class GitVaultManager implements VaultManager {
         ),
       ]);
 
-      // Reset to clean "as cloned" state - matches remote exactly
-      logger.debug('Resetting vault to clean state');
-      await vaultGit.reset(['--hard', `origin/${this.config.branch}`]);
+      // Only reset when the remote actually moved. Compare local HEAD to the
+      // fetched remote tip; if equal, the working tree already matches and a
+      // hard reset + clean would be pure churn on every tool call.
+      const [localHead, remoteHead] = await Promise.all([
+        vaultGit.revparse(['HEAD']),
+        vaultGit.revparse([`origin/${this.config.branch}`]),
+      ]);
 
-      // Remove untracked files and directories (-f = force, -d = directories, -x = ignored files)
+      if (localHead.trim() === remoteHead.trim()) {
+        logger.info('Vault already up to date', {
+          durationMs: Date.now() - startTime,
+          branch: this.config.branch,
+          head: localHead.trim().slice(0, 8),
+        });
+        return;
+      }
+
+      // Remote moved: reset to it exactly and drop any local cruft.
+      logger.debug('Remote advanced, resetting vault to clean state');
+      await vaultGit.reset(['--hard', `origin/${this.config.branch}`]);
       await vaultGit.clean('fdx');
 
       logger.info('Vault synced with remote', {
         durationMs: Date.now() - startTime,
         branch: this.config.branch,
+        from: localHead.trim().slice(0, 8),
+        to: remoteHead.trim().slice(0, 8),
       });
     } catch (error) {
       logger.error('Sync failed, removing vault and performing fresh clone', {
