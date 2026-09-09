@@ -7,7 +7,7 @@
 /**
  * Login page - asks for personal auth token
  */
-export function loginPage(error?: string): string {
+export function loginPage(error?: string, sessionRef?: string): string {
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -123,7 +123,8 @@ export function loginPage(error?: string): string {
 
     ${error ? `<div class="error">⚠️ ${error}</div>` : ''}
 
-    <form method="POST" action="/login">
+    <form method="POST" action="/login${sessionRef ? `?s=${encodeURIComponent(sessionRef)}` : ''}">
+      ${sessionRef ? `<input type="hidden" name="s" value="${sessionRef}" />` : ''}
       <div class="form-group">
         <label for="token">Personal Authentication Token</label>
         <input
@@ -151,7 +152,7 @@ export function loginPage(error?: string): string {
 /**
  * Consent screen - asks user to approve ChatGPT/Claude access
  */
-export function consentPage(clientId: string): string {
+export function consentPage(clientId: string, sessionRef?: string): string {
   const appName = clientId.includes('chatgpt')
     ? 'ChatGPT'
     : clientId.includes('claude')
@@ -351,9 +352,10 @@ export function consentPage(clientId: string): string {
       </div>
     </div>
 
-    <form method="POST" action="/oauth/approve">
+    <form method="POST" action="/oauth/approve${sessionRef ? `?s=${encodeURIComponent(sessionRef)}` : ''}">
+      ${sessionRef ? `<input type="hidden" name="s" value="${sessionRef}" />` : ''}
       <div class="actions">
-        <button type="button" class="btn-deny" onclick="window.location.href='/oauth/deny'">
+        <button type="button" class="btn-deny" onclick="window.location.href='/oauth/deny${sessionRef ? `?s=${encodeURIComponent(sessionRef)}` : ''}'">
           Deny
         </button>
         <button type="submit" class="btn-approve">

@@ -8,6 +8,7 @@ import { Express, Response } from 'express';
 import cookieParser from 'cookie-parser';
 import * as auth from '@/services/auth';
 import * as pages from '@/ui/oauth-pages';
+import { logger } from '@/utils/logger';
 
 export interface OAuthConfig {
   clientId: string;
@@ -38,6 +39,25 @@ export function registerOAuthRoutes(app: Express, config: OAuthConfig): void {
     res.cookie('session_id', sessionId, sessionCookieOptions);
   };
 
+  // The browser flow is split across two clients in some MCP hosts (the
+  // ChatGPT desktop app fetches /oauth/authorize with its own HTTP client and
+  // then opens the login page in a webview that has no cookie). So the
+  // session is also carried explicitly as `s` in the URL and as a hidden form
+  // field; the cookie is a convenience, not the only thread.
+  const sessionRef = (req: any): string | undefined => {
+    const raw = req.query?.s ?? req.body?.s;
+    return typeof raw === 'string' && raw.length > 0 ? raw : undefined;
+  };
+  const resolveSession = async (req: any): Promise<string | undefined> => {
+    const ref = sessionRef(req);
+    if (ref && (await auth.getSession(ref))) return ref;
+    const cookie = req.cookies?.session_id;
+    if (cookie && (await auth.getSession(cookie))) return cookie;
+    return undefined;
+  };
+  const withRef = (path: string, sessionId?: string) =>
+    sessionId ? `${path}?s=${encodeURIComponent(sessionId)}` : path;
+
   app.get('/.well-known/oauth-authorization-server', (_req, res) => {
     res.json({
       issuer: baseUrl,
@@ -48,47 +68,49 @@ export function registerOAuthRoutes(app: Express, config: OAuthConfig): void {
       response_types_supported: ['code'],
       grant_types_supported: ['authorization_code', 'refresh_token'],
       code_challenge_methods_supported: ['S256', 'plain'],
-      token_endpoint_auth_methods_supported: ['client_secret_post'],
+      token_endpoint_auth_methods_supported: ['client_secret_basic', 'client_secret_post'],
+    });
+  });
+
+  // RFC 9728 protected-resource metadata. MCP clients (2025-06-18 auth spec)
+  // probe this first to find the authorization server; without it some fall
+  // back to guessing, others refuse to connect.
+  app.get('/.well-known/oauth-protected-resource', (_req, res) => {
+    res.json({
+      resource: baseUrl,
+      authorization_servers: [baseUrl],
+      bearer_methods_supported: ['header'],
     });
   });
 
   app.get('/login', async (req, res) => {
-    let sessionId = req.cookies?.session_id;
-    const session = sessionId ? await auth.getSession(sessionId) : null;
-
-    if (!session) {
+    let sessionId = await resolveSession(req);
+    if (!sessionId) {
       sessionId = await auth.createSession();
-      setSessionCookie(res, sessionId);
     }
-
-    res.send(pages.loginPage());
+    setSessionCookie(res, sessionId);
+    res.send(pages.loginPage(undefined, sessionId));
   });
 
   app.post('/login', async (req, res) => {
     const { token } = req.body;
-    let sessionId = req.cookies?.session_id;
-    const session = sessionId ? await auth.getSession(sessionId) : null;
-
-    if (!session) {
+    let sessionId = await resolveSession(req);
+    if (!sessionId) {
       sessionId = await auth.createSession();
-      setSessionCookie(res, sessionId);
     }
+    setSessionCookie(res, sessionId);
 
     if (!token) {
-      res.send(pages.loginPage('Please enter your authentication token'));
-      return;
-    }
-
-    if (!sessionId) {
-      res.send(pages.loginPage('Unable to establish session'));
+      res.send(pages.loginPage('Please enter your authentication token', sessionId));
       return;
     }
 
     if (await auth.authenticateSession(sessionId, token)) {
-      setSessionCookie(res, sessionId);
-      res.redirect('/oauth/consent');
+      logger.info('Login succeeded', { sid: sessionId.slice(0, 8) });
+      res.redirect(withRef('/oauth/consent', sessionId));
     } else {
-      res.send(pages.loginPage('Invalid authentication token'));
+      logger.warn('Login failed: wrong personal auth token', { sid: sessionId.slice(0, 8) });
+      res.send(pages.loginPage('Invalid authentication token', sessionId));
     }
   });
 
@@ -126,17 +148,12 @@ export function registerOAuthRoutes(app: Express, config: OAuthConfig): void {
         .send(pages.errorPage('invalid_request', 'code_challenge_method must be S256 or plain'));
     }
 
-    let sessionId = req.cookies?.session_id;
-    const session = sessionId ? await auth.getSession(sessionId) : null;
-
-    if (!session) {
-      sessionId = await auth.createSession();
-      setSessionCookie(res, sessionId);
-    }
-
+    let sessionId = await resolveSession(req);
     if (!sessionId) {
-      return res.status(500).send(pages.errorPage('server_error', 'Unable to establish session'));
+      sessionId = await auth.createSession();
     }
+    setSessionCookie(res, sessionId);
+    logger.info('Authorization request stored', { sid: sessionId.slice(0, 8), client_id });
 
     const stored = await auth.storePendingAuthRequest(
       sessionId,
@@ -154,18 +171,19 @@ export function registerOAuthRoutes(app: Express, config: OAuthConfig): void {
     }
 
     if (!(await auth.isAuthenticated(sessionId))) {
-      return res.redirect('/login');
+      return res.redirect(withRef('/login', sessionId));
     }
 
-    return res.redirect('/oauth/consent');
+    return res.redirect(withRef('/oauth/consent', sessionId));
   });
 
   app.get('/oauth/consent', async (req, res) => {
-    const sessionId = req.cookies?.session_id;
+    const sessionId = await resolveSession(req);
 
     if (!sessionId || !(await auth.isAuthenticated(sessionId))) {
-      return res.redirect('/login');
+      return res.redirect(withRef('/login', sessionId));
     }
+    setSessionCookie(res, sessionId);
 
     const session = await auth.getSession(sessionId);
     if (!session?.pendingAuthRequest) {
@@ -174,14 +192,14 @@ export function registerOAuthRoutes(app: Express, config: OAuthConfig): void {
         .send(pages.errorPage('invalid_request', 'No pending authorization request'));
     }
 
-    res.send(pages.consentPage(session.pendingAuthRequest.clientId));
+    res.send(pages.consentPage(session.pendingAuthRequest.clientId, sessionId));
   });
 
   app.post('/oauth/approve', async (req, res) => {
-    const sessionId = req.cookies?.session_id;
+    const sessionId = await resolveSession(req);
 
     if (!sessionId || !(await auth.isAuthenticated(sessionId))) {
-      return res.redirect('/login');
+      return res.redirect(withRef('/login', sessionId));
     }
 
     const pending = await auth.consumePendingAuthRequest(sessionId);
@@ -208,7 +226,7 @@ export function registerOAuthRoutes(app: Express, config: OAuthConfig): void {
   });
 
   app.get('/oauth/deny', async (req, res) => {
-    const sessionId = req.cookies?.session_id;
+    const sessionId = await resolveSession(req);
 
     if (sessionId) {
       const pending = await auth.consumePendingAuthRequest(sessionId);
@@ -229,21 +247,43 @@ export function registerOAuthRoutes(app: Express, config: OAuthConfig): void {
   });
 
   app.post('/oauth/token', async (req, res) => {
-    const {
-      grant_type,
-      code,
-      code_verifier,
-      redirect_uri,
-      client_id,
-      client_secret,
-      refresh_token,
-    } = req.body;
+    const { grant_type, code, code_verifier, redirect_uri, refresh_token } = req.body;
 
-    if (!auth.validateClientCredentials(client_id, client_secret)) {
-      return res.status(401).json({
-        error: 'invalid_client',
-        error_description: 'Invalid client credentials',
-      });
+    // RFC 6749 §2.3.1: servers MUST support HTTP Basic for client credentials;
+    // the body form is optional. Most OAuth clients (ChatGPT included) send
+    // Basic even when registration advertised client_secret_post. Header wins
+    // when both are present.
+    let { client_id, client_secret } = req.body;
+    const authz = req.headers.authorization;
+    if (authz?.startsWith('Basic ')) {
+      const decoded = Buffer.from(authz.substring(6), 'base64').toString('utf8');
+      const sep = decoded.indexOf(':');
+      if (sep > 0) {
+        client_id = decodeURIComponent(decoded.substring(0, sep));
+        client_secret = decodeURIComponent(decoded.substring(sep + 1));
+      }
+    }
+
+    // A confidential client (one that presented a secret) must present a
+    // valid one. A public client presents none: ChatGPT's connector refreshes
+    // that way, and PKCE (code_verifier on the code exchange) plus possession
+    // of the refresh token are the real proof, not a shared secret. Requiring
+    // the secret here was breaking refresh → the client thrashed on an expired
+    // access token and the conversation lost its tools after an hour.
+    if (client_secret) {
+      if (!auth.validateClientCredentials(client_id, client_secret)) {
+        logger.warn('Token request rejected: invalid client credentials', {
+          grant_type,
+          client_id,
+          auth_method: authz?.startsWith('Basic ') ? 'client_secret_basic' : 'client_secret_post',
+        });
+        return res.status(401).json({
+          error: 'invalid_client',
+          error_description: 'Invalid client credentials',
+        });
+      }
+    } else {
+      logger.info('Token request from public client (no secret presented)', { grant_type, client_id });
     }
 
     if (grant_type === 'authorization_code') {
@@ -257,6 +297,7 @@ export function registerOAuthRoutes(app: Express, config: OAuthConfig): void {
       const result = await auth.exchangeCodeForToken(code, code_verifier, redirect_uri, client_id);
 
       if (!result) {
+        logger.warn('Token request rejected: invalid grant', { grant_type });
         return res.status(400).json({
           error: 'invalid_grant',
           error_description: 'Invalid or expired authorization code',
@@ -280,6 +321,7 @@ export function registerOAuthRoutes(app: Express, config: OAuthConfig): void {
       const result = await auth.refreshAccessToken(refresh_token);
 
       if (!result) {
+        logger.warn('Token request rejected: invalid grant', { grant_type });
         return res.status(400).json({
           error: 'invalid_grant',
           error_description: 'Invalid or expired refresh token',
