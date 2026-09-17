@@ -235,6 +235,45 @@ is read-only, and the server says so in its startup log.
 Read-only limits what a client can _do_, not what it can _see_: it can still
 read every note the path guards allow.
 
+#### Setting up a read-only token
+
+A read-only token is nothing special: any long random string, set in a
+different variable. It must differ from the read-write one — a token that
+matches both is treated as read-only.
+
+1. **Generate one** and keep it somewhere you can read it back, because it is
+   what you will type on the login page:
+
+   ```bash
+   openssl rand -hex 32
+   # or: node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+   ```
+
+2. **Give it to the server** as `PERSONAL_AUTH_TOKEN_RO` — in `.env`, in the
+   container's environment, or in the Kubernetes secret (see the
+   [chart README](brainmcp-chart/README.md#adding-a-read-only-token-later)).
+   For a client that can only send a fixed header, put a generated token in
+   `MCP_STATIC_BEARER_TOKENS_RO` instead.
+
+3. **Restart the server.** Environment is read once at startup. The startup
+   log then shows what is configured, without printing any token:
+
+   ```
+   Access levels configured {"loginWrite":true,"loginRead":true,"staticWrite":1,"staticRead":0,"problems":[]}
+   ```
+
+   A restart drops every issued OAuth token (they are held in memory), so
+   clients that were signed in have to sign in again.
+
+4. **Sign in with it.** Connect the client as usual and type the read-only
+   token on the login page. The consent page says **Read-only access** and no
+   longer lists _Modify your notes_; the client then sees only the tools that
+   search, list and read.
+
+To move a client between levels, connect again and choose **Use a different
+token** on the consent page. Without that, the server remembers the earlier
+login for a day and offers the same level again.
+
 ### Secret scanning in the image
 
 The published image includes `gitleaks`, pinned, so a vault whose hook shells
