@@ -84,6 +84,10 @@ Generate secure secrets using:
 node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
 ```
 
+To let some clients read without being able to write, generate another token
+the same way and set it as `PERSONAL_AUTH_TOKEN_RO`. See
+[Setting up a read-only token](../README.md#setting-up-a-read-only-token).
+
 ### Optional Variables
 
 ```bash

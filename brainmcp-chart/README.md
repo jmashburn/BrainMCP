@@ -63,6 +63,22 @@ helm install brainmcp ./brainmcp-chart -n brain \
 
 Give clients `<baseUrl>/mcp`, not the site root.
 
+### Adding a read-only token later
+
+```bash
+kubectl -n brain patch secret brainmcp-secrets --type=merge \
+  -p "{\"stringData\":{\"PERSONAL_AUTH_TOKEN_RO\":\"$(openssl rand -hex 32)\"}}"
+kubectl -n brain rollout restart deploy/brainmcp
+
+# read it back when you need to type it on the login page
+kubectl -n brain get secret brainmcp-secrets -o jsonpath='{.data.PERSONAL_AUTH_TOKEN_RO}' | base64 -d
+```
+
+The restart is required — environment is read at startup, and a change to a
+secret you manage yourself does not roll the pod. It also signs every OAuth
+client out once. The startup log confirms the result with
+`"loginRead":true`.
+
 ## Verify
 
 ```bash
