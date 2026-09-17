@@ -5,6 +5,7 @@ export {
   accessForLoginToken,
   storePendingAuthRequest,
   consumePendingAuthRequest,
+  restartLogin,
   isAuthenticated,
   destroySession,
   type Session,

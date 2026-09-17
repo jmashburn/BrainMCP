@@ -283,6 +283,79 @@ describe('OAuth login decides the access level', () => {
   });
 });
 
+describe('switching the login token mid-authorization', () => {
+  const startAuthorization = async () => {
+    const authorize = await request(app).get('/oauth/authorize').query({
+      response_type: 'code',
+      client_id: CLIENT_ID,
+      redirect_uri: REDIRECT_URI,
+      code_challenge: PKCE,
+      code_challenge_method: 'plain',
+      state: 'state-1',
+    });
+    return new URL(authorize.headers.location, 'http://localhost').searchParams.get('s')!;
+  };
+
+  const tokenFor = async (sessionRef: string) => {
+    const approve = await request(app).post('/oauth/approve').type('form').send({ s: sessionRef });
+    const code = new URL(approve.headers.location).searchParams.get('code')!;
+    const token = await request(app).post('/oauth/token').type('form').send({
+      grant_type: 'authorization_code',
+      code,
+      code_verifier: PKCE,
+      redirect_uri: REDIRECT_URI,
+      client_id: CLIENT_ID,
+      client_secret: CLIENT_SECRET,
+    });
+    return token.body as TokenResponse;
+  };
+
+  it('lets a read-only login be replaced by a read-write one, keeping the pending request', async () => {
+    const first = await startAuthorization();
+    await request(app).post('/login').type('form').send({ token: LOGIN_RO, s: first });
+
+    const switched = await request(app).post('/oauth/switch').type('form').send({ s: first });
+    const second = new URL(switched.headers.location, 'http://localhost').searchParams.get('s')!;
+    await request(app).post('/login').type('form').send({ token: LOGIN_RW, s: second });
+    const tokens = await tokenFor(second);
+
+    expect(switched.status).toBe(302);
+    expect(second).not.toBe(first);
+    expect(tokens.scope).toBe('vault:read vault:write');
+  });
+
+  it('invalidates the session it replaces', async () => {
+    const first = await startAuthorization();
+    await request(app).post('/login').type('form').send({ token: LOGIN_RO, s: first });
+    await request(app).post('/oauth/switch').type('form').send({ s: first });
+
+    const consent = await request(app).get('/oauth/consent').query({ s: first });
+    const approve = await request(app).post('/oauth/approve').type('form').send({ s: first });
+
+    expect(consent.status).toBe(302);
+    expect(approve.headers.location).not.toContain('code=');
+  });
+
+  it('requires a fresh login: the new session is not authenticated', async () => {
+    const first = await startAuthorization();
+    await request(app).post('/login').type('form').send({ token: LOGIN_RW, s: first });
+    const switched = await request(app).post('/oauth/switch').type('form').send({ s: first });
+    const second = new URL(switched.headers.location, 'http://localhost').searchParams.get('s')!;
+
+    const consent = await request(app).get('/oauth/consent').query({ s: second });
+
+    expect(consent.status).toBe(302);
+    expect(consent.headers.location).toContain('/login');
+  });
+
+  it('shows which kind of token is signed in, with a way to change it', async () => {
+    const { consentHtml } = await logIn(LOGIN_RO);
+
+    expect(consentHtml).toContain('Signed in with a <strong>read-only</strong> token');
+    expect(consentHtml).toContain('/oauth/switch');
+  });
+});
+
 describe('a read-only credential', () => {
   it('is offered only read-only tools, from an OAuth token', async () => {
     const { tokens } = await logIn(LOGIN_RO);

@@ -192,6 +192,34 @@ export async function consumePendingAuthRequest(
   return request;
 }
 
+/**
+ * Start the login over without losing the client's place.
+ *
+ * A login session remembers the access level of the token it was opened with,
+ * for as long as it lives. Without a way out, someone who signed in read-only
+ * can never grant the same browser read-write (or the reverse) until the
+ * session expires. This swaps the session for a fresh, unauthenticated one
+ * that carries the pending authorization request, so the client that sent the
+ * user here still gets its answer after the new login.
+ */
+export async function restartLogin(sessionId: string): Promise<string | null> {
+  const session = await getSession(sessionId);
+  if (!session) return null;
+
+  const store = getAuthStore();
+  const newSessionId = await createSession();
+  if (session.pendingAuthRequest) {
+    const fresh = await getSession(newSessionId);
+    if (fresh) {
+      await store.setSession({ ...fresh, pendingAuthRequest: session.pendingAuthRequest });
+    }
+  }
+  await store.deleteSession(sessionId);
+
+  logger.info('Login restarted', { from: sessionId.slice(0, 8), to: newSessionId.slice(0, 8) });
+  return newSessionId;
+}
+
 export async function isAuthenticated(sessionId: string): Promise<boolean> {
   const session = await getSession(sessionId);
   return session?.authenticated || false;

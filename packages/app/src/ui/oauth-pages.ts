@@ -298,6 +298,21 @@ export function consentPage(
     .btn-deny:hover {
       background: #cbd5e0;
     }
+    .switch {
+      margin-top: 20px;
+      text-align: center;
+      font-size: 14px;
+      color: #4a5568;
+    }
+    .btn-link {
+      background: none;
+      border: none;
+      padding: 0;
+      color: #5a67d8;
+      font: inherit;
+      text-decoration: underline;
+      cursor: pointer;
+    }
     .warning {
       margin-top: 24px;
       padding: 16px;
@@ -383,6 +398,12 @@ export function consentPage(
           Allow Access
         </button>
       </div>
+    </form>
+
+    <form method="POST" action="/oauth/switch${sessionRef ? `?s=${encodeURIComponent(sessionRef)}` : ''}" class="switch">
+      ${sessionRef ? `<input type="hidden" name="s" value="${sessionRef}" />` : ''}
+      Signed in with a <strong>${canWrite ? 'read-and-write' : 'read-only'}</strong> token.
+      <button type="submit" class="btn-link">Use a different token</button>
     </form>
 
     <div class="warning">
