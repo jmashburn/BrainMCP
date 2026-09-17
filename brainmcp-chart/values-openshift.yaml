@@ -1,0 +1,10 @@
+# OpenShift overlay: expose through an edge-terminated Route.
+#
+#   helm install brainmcp ./brainmcp-chart -n brain --create-namespace \
+#     -f brainmcp-chart/values-openshift.yaml \
+#     --set vault.repo=https://git.example.com/me/vault.git \
+#     --set server.baseUrl=https://brainmcp.apps.example.com \
+#     --set route.host=brainmcp.apps.example.com \
+#     --set secrets.existingSecret=brainmcp-secrets
+route:
+  enabled: true

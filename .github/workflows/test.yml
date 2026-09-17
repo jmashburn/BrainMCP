@@ -35,3 +35,10 @@ jobs:
 
       - name: Run tests
         run: npm run test
+
+      - name: Lint Helm chart
+        run: >-
+          helm lint brainmcp-chart
+          --set vault.repo=https://git.example.com/me/vault.git
+          --set server.baseUrl=https://brainmcp.example.com
+          --set secrets.existingSecret=brainmcp-secrets

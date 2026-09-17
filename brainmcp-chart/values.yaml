@@ -1,0 +1,172 @@
+# Default values for brainmcp.
+#
+# The server runs in HTTP mode behind OAuth 2.0 + PKCE. It keeps its own clone
+# of the vault and commits + pushes every write, so it needs a git remote and a
+# token — never point it at a working copy someone edits.
+
+image:
+  repository: ghcr.io/jmashburn/brainmcp
+  # Published tags are `latest` and `main-<short sha>`. Pin a sha tag for
+  # anything you do not want to change underneath you.
+  tag: latest
+  pullPolicy: Always
+
+imagePullSecrets: []
+nameOverride: ''
+fullnameOverride: ''
+
+# Sessions and OAuth state are held in memory, so a second replica would
+# answer requests for sessions it has never seen. The chart refuses > 1.
+replicaCount: 1
+
+vault:
+  # REQUIRED. Plain HTTPS URL with no credentials in it. SSH is not supported.
+  repo: ''
+  branch: main
+  # Vault-relative hooks dir applied as core.hooksPath on the server's clone,
+  # so the vault's own pre-commit (gitleaks) runs on writes the server makes.
+  # Only applied at clone time. Set to "" to disable.
+  hooksPath: .githooks
+  # Served as the vault-readme resource AND automatically write-protected.
+  guidanceFiles: 'README.md,CLAUDE.md,AGENTS.md,90-Meta/conventions.md'
+  # Comma-separated write-deny globs. REPLACES the built-in defaults rather
+  # than adding to them, so list everything. "" keeps the defaults.
+  protectedPaths: ''
+
+git:
+  # Only needed when the host is not github.com / bitbucket.org and does not
+  # contain "gitlab" — the server then uses basic auth as <username>:<token>.
+  # For a GitLab personal/project access token use "oauth2".
+  username: ''
+  # The server commits as "Obsidian MCP Server <mcp@obsidian.local>". Set these
+  # when the remote enforces verified authors; they become GIT_AUTHOR_* and
+  # GIT_COMMITTER_*.
+  authorName: ''
+  authorEmail: ''
+  # Private CA for a self-hosted remote. Names a ConfigMap you create; the
+  # bundle is mounted and exported as GIT_SSL_CAINFO and NODE_EXTRA_CA_CERTS.
+  caBundle:
+    existingConfigMap: ''
+    key: ca.crt
+
+server:
+  # REQUIRED. The externally reachable base URL. It is the OAuth issuer and the
+  # resource-metadata URL in WWW-Authenticate; clients fail silently if wrong.
+  # The MCP endpoint is <baseUrl>/mcp.
+  baseUrl: ''
+  port: 3000
+  logLevel: info
+  oauthClientId: brain-mcp-client
+  sessionExpiryMs: '86400000'
+  # Comma-separated tool allowlist; "" exposes every tool. A tool left out is
+  # absent from tools/list. orient, search and fetch are always present.
+  exposedTools: ''
+  # Obsidian vault name used in obsidian://open links returned to connectors.
+  connectorVaultName: vault
+  # Written as `source:` frontmatter on notes the server creates.
+  noteSource: ''
+
+# Where things live in the vault. Defaults follow the Brain vault layout.
+conventions:
+  templatesDir: 90-Meta/templates
+  inboxDir: 00-Inbox
+  inboxTemplate: reference.md
+  tasksPath: 10-Tasks/TASKS.md
+  tasksDefaultSection: '## Now'
+  journal:
+    pathTemplate: '70-Journal/{{date}}.md'
+    dateFormat: YYYY-MM-DD
+    activitySection: '## Claude session'
+    fileTemplate: 90-Meta/templates/daily.md
+    # detailed | bullet
+    entryStyle: bullet
+
+secrets:
+  # Preferred: name a Secret you manage yourself. It must carry GIT_TOKEN,
+  # OAUTH_CLIENT_SECRET and PERSONAL_AUTH_TOKEN, and may carry
+  # MCP_STATIC_BEARER_TOKENS. The values below are then ignored.
+  existingSecret: ''
+  # Otherwise the chart renders a Secret from these. They end up in the Helm
+  # release record, so prefer existingSecret outside a lab.
+  gitToken: ''
+  oauthClientSecret: ''
+  # What a human types on the login page. Holder has the whole vault.
+  personalAuthToken: ''
+  # Comma-separated fixed bearer tokens for header-only clients. Same trust
+  # level as personalAuthToken.
+  staticBearerTokens: ''
+
+# The server's vault clone. Disposable: it is re-cloned when missing.
+vaultStorage:
+  sizeLimit: ''
+
+serviceAccount:
+  create: true
+  name: ''
+  annotations: {}
+  # The server never talks to the Kubernetes API.
+  automountToken: false
+
+service:
+  type: ClusterIP
+  port: 3000
+  annotations: {}
+
+# OpenShift only; ignored when the Route API is absent.
+route:
+  enabled: false
+  host: ''
+  annotations: {}
+  tls:
+    enabled: true
+    termination: edge
+    insecureEdgeTerminationPolicy: Redirect
+
+ingress:
+  enabled: false
+  className: ''
+  annotations: {}
+  host: ''
+  tls:
+    enabled: false
+    secretName: ''
+
+resources:
+  requests:
+    cpu: 50m
+    memory: 128Mi
+  limits:
+    cpu: 500m
+    memory: 512Mi
+
+readinessProbe:
+  initialDelaySeconds: 5
+  periodSeconds: 10
+livenessProbe:
+  initialDelaySeconds: 15
+  periodSeconds: 20
+
+# Left empty, the chart picks for you: nothing on OpenShift (the SCC assigns an
+# arbitrary non-root UID), and a fixed non-root UID/fsGroup elsewhere, because
+# the image's default user is root.
+podSecurityContext: {}
+
+securityContext:
+  allowPrivilegeEscalation: false
+  runAsNonRoot: true
+  capabilities:
+    drop:
+      - ALL
+  seccompProfile:
+    type: RuntimeDefault
+
+podAnnotations: {}
+podLabels: {}
+nodeSelector: {}
+tolerations: []
+affinity: {}
+
+extraEnv: []
+extraEnvFrom: []
+extraVolumes: []
+extraVolumeMounts: []
