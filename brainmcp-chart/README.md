@@ -112,6 +112,9 @@ See [`values.yaml`](values.yaml) for the full list.
 ## Operations
 
 - **Upgrade:** `helm upgrade brainmcp ./brainmcp-chart -n brain --reuse-values --set image.tag=main-<sha>`.
+  Every push to `main` publishes that tag, and the Release workflow's run summary prints the
+  command. Name the tag rather than relying on `latest`: an upgrade with unchanged values rolls
+  nothing, so a new `latest` would not be pulled.
   Configuration changes roll the pod automatically; a change to an
   `existingSecret` does not — `kubectl -n brain rollout restart deploy/brainmcp`.
 - **Restarts log everyone out.** Sessions and OAuth state are in memory.
