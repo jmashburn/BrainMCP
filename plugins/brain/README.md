@@ -56,6 +56,14 @@ claude plugin install brain@brainmcp --config url=https://new-host.example.com/m
 
 Inside Claude Code, `/plugin` → the plugin → Configure does the same.
 
+## Token instead of login?
+
+To authenticate with a static bearer token — for example to give several people
+their own revocable, read-only credential — install
+[`brain-token`](../brain-token/README.md) **instead of** this plugin. The two
+cannot be combined: an `Authorization` header in a server entry disables Claude
+Code's OAuth fallback even when the token is left unset.
+
 ## Already connected another way?
 
 One route to the server is enough. If the same server is already added as a

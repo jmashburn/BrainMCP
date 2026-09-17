@@ -1,0 +1,37 @@
+{
+  "name": "brain-token",
+  "displayName": "Brain (token)",
+  "version": "0.1.0",
+  "description": "Registers your BrainMCP server using a static bearer token instead of the browser OAuth login",
+  "author": {
+    "name": "Jared Mashburn"
+  },
+  "homepage": "https://github.com/jmashburn/BrainMCP/tree/main/plugins/brain-token",
+  "repository": "https://github.com/jmashburn/BrainMCP",
+  "license": "MIT",
+  "keywords": ["mcp", "obsidian", "memory", "vault"],
+  "userConfig": {
+    "url": {
+      "type": "string",
+      "title": "BrainMCP server URL",
+      "description": "The server's MCP endpoint, ending in /mcp (for example https://brain.example.com/mcp). Give the endpoint, not the site root.",
+      "required": true
+    },
+    "token": {
+      "type": "string",
+      "title": "Bearer token",
+      "description": "A token from the server's MCP_STATIC_BEARER_TOKENS_RO (read-only) or MCP_STATIC_BEARER_TOKENS (read-write) list.",
+      "required": true,
+      "sensitive": true
+    }
+  },
+  "mcpServers": {
+    "brain": {
+      "type": "http",
+      "url": "${user_config.url}",
+      "headers": {
+        "Authorization": "Bearer ${user_config.token}"
+      }
+    }
+  }
+}
