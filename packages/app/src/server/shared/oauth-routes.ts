@@ -283,7 +283,10 @@ export function registerOAuthRoutes(app: Express, config: OAuthConfig): void {
         });
       }
     } else {
-      logger.info('Token request from public client (no secret presented)', { grant_type, client_id });
+      logger.info('Token request from public client (no secret presented)', {
+        grant_type,
+        client_id,
+      });
     }
 
     if (grant_type === 'authorization_code') {

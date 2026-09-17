@@ -110,7 +110,9 @@ registerMcpRoute(app, mcpServer, { createServer });
 // site root instead of /mcp) otherwise fails with an unlogged 404.
 app.use((req, res) => {
   logger.warn('Unmatched route', { method: req.method, path: req.path });
-  res.status(404).json({ error: 'not_found', error_description: `No route for ${req.method} ${req.path}` });
+  res
+    .status(404)
+    .json({ error: 'not_found', error_description: `No route for ${req.method} ${req.path}` });
 });
 
 const PORT = parseInt(process.env.PORT || '3000');

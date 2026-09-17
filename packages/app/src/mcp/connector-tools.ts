@@ -55,7 +55,7 @@ export function registerConnectorTools(
       const items: Array<{ path: string; matches?: Array<{ content: string }> }> = result.success
         ? (result.data?.results ?? [])
         : [];
-      const results = items.map((item) => ({
+      const results = items.map(item => ({
         id: item.path,
         title: titleOf(item.path),
         url: urlOf(item.path),
@@ -69,7 +69,8 @@ export function registerConnectorTools(
     'fetch',
     {
       title: 'Fetch',
-      description: 'Fetch the full contents of a note by the id returned from search (its vault path). For substantive Brain work, call `orient` first.',
+      description:
+        'Fetch the full contents of a note by the id returned from search (its vault path). For substantive Brain work, call `orient` first.',
       inputSchema: { id: z.string().describe('Note id (vault-relative path) from search') },
       annotations: readOnly,
     },
@@ -77,7 +78,9 @@ export function registerConnectorTools(
       const result = await handlers.handleReadNote(getVaultManager(), { path: id });
       if (!result.success) {
         return {
-          content: [{ type: 'text', text: JSON.stringify({ error: result.error ?? 'not found', id }) }],
+          content: [
+            { type: 'text', text: JSON.stringify({ error: result.error ?? 'not found', id }) },
+          ],
           isError: true,
         };
       }

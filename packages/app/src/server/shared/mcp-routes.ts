@@ -21,10 +21,10 @@ import { timingSafeEqual } from 'node:crypto';
 function matchesStaticToken(token: string): boolean {
   const configured = (process.env.MCP_STATIC_BEARER_TOKENS || '')
     .split(',')
-    .map((s) => s.trim())
+    .map(s => s.trim())
     .filter(Boolean);
   const given = Buffer.from(token);
-  return configured.some((c) => {
+  return configured.some(c => {
     const cand = Buffer.from(c);
     return cand.length === given.length && timingSafeEqual(cand, given);
   });
@@ -121,7 +121,11 @@ export interface McpRouteOptions {
   createServer?: () => McpServer;
 }
 
-export function registerMcpRoute(app: Express, mcpServer: McpServer, options: McpRouteOptions = {}): void {
+export function registerMcpRoute(
+  app: Express,
+  mcpServer: McpServer,
+  options: McpRouteOptions = {},
+): void {
   app.get('/health', (_req, res) => {
     res.json({
       status: 'ok',
@@ -241,7 +245,7 @@ function registerStatefulRoutes(app: Express, createServer: () => McpServer): vo
         const newTransport = new StreamableHTTPServerTransport({
           sessionIdGenerator: () => randomUUID(),
           enableJsonResponse: true,
-          onsessioninitialized: (id) => {
+          onsessioninitialized: id => {
             sessions.set(id, newTransport);
             logger.info('MCP session opened', { sid: id.slice(0, 8), sessions: sessions.size });
           },
@@ -273,7 +277,11 @@ function registerStatefulRoutes(app: Express, createServer: () => McpServer): vo
       if (!res.headersSent) {
         res.status(500).json({
           jsonrpc: '2.0',
-          error: { code: -32603, message: 'Internal error', data: error instanceof Error ? error.message : 'Unknown error' },
+          error: {
+            code: -32603,
+            message: 'Internal error',
+            data: error instanceof Error ? error.message : 'Unknown error',
+          },
           id: requestId ?? null,
         });
       }
@@ -284,7 +292,10 @@ function registerStatefulRoutes(app: Express, createServer: () => McpServer): vo
     const sid = sessionIdOf(req);
     const transport = sid ? sessions.get(sid) : undefined;
     if (!transport) {
-      logger.warn('MCP stream/delete for unknown session', { method: req.method, hasSid: Boolean(sid) });
+      logger.warn('MCP stream/delete for unknown session', {
+        method: req.method,
+        hasSid: Boolean(sid),
+      });
       return badSession(res, 'Bad Request: unknown or missing session ID');
     }
     await transport.handleRequest(req, res);
@@ -299,7 +310,10 @@ function registerStatefulRoutes(app: Express, createServer: () => McpServer): vo
     const sid = sessionIdOf(req);
     if (sid && sessions.has(sid)) {
       if (!req.headers.authorization) {
-        logger.debug('MCP stream/delete authenticated by session id only', { method: req.method, sid: sid.slice(0, 8) });
+        logger.debug('MCP stream/delete authenticated by session id only', {
+          method: req.method,
+          sid: sid.slice(0, 8),
+        });
       }
       return next();
     }
