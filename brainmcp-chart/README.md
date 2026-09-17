@@ -33,6 +33,12 @@ somewhere you can read it back. Add `MCP_STATIC_BEARER_TOKENS` (comma-separated)
 for clients that can only send a fixed `Authorization: Bearer` header. Anyone
 holding either has the whole vault.
 
+For clients that should only ever read, add `PERSONAL_AUTH_TOKEN_RO` (a second
+login token) and/or `MCP_STATIC_BEARER_TOKENS_RO` to the same secret. A client
+authenticated with one is never offered a tool that changes the vault, and the
+vault it is given refuses writes. Use different values from the read-write
+ones: a token present at both levels is treated as read-only.
+
 OpenShift:
 
 ```bash
@@ -86,19 +92,20 @@ helm upgrade brainmcp ./brainmcp-chart -n brain --reuse-values \
 
 ## Values worth knowing
 
-| Value                                           | Default      | Notes                                                                              |
-| ----------------------------------------------- | ------------ | ---------------------------------------------------------------------------------- |
-| `vault.repo`                                    | —            | **Required.** HTTPS URL, no credentials in it                                      |
-| `server.baseUrl`                                | —            | **Required.** External URL; OAuth issuer                                           |
-| `secrets.existingSecret`                        | `""`         | Preferred over the inline `secrets.*` values                                       |
-| `image.tag`                                     | `latest`     | Pin a `main-<sha>` tag for reproducible installs                                   |
-| `vault.hooksPath`                               | `.githooks`  | The vault's own pre-commit runs on the server's writes. Applied at clone time only |
-| `vault.guidanceFiles`                           | Brain layout | Served as a resource and write-protected                                           |
-| `server.exposedTools`                           | `""` (all)   | Allowlist; omitted tools disappear from `tools/list`                               |
-| `conventions.*`                                 | Brain layout | Inbox, tasks, templates and journal locations                                      |
-| `replicaCount`                                  | `1`          | More than 1 is refused: sessions live in memory                                    |
-| `podSecurityContext`                            | `{}`         | Auto: nothing on OpenShift, UID/fsGroup `10001` elsewhere                          |
-| `extraEnv`, `extraVolumes`, `extraVolumeMounts` | `[]`         | e.g. `https_proxy`                                                                 |
+| Value                                                                     | Default      | Notes                                                                              |
+| ------------------------------------------------------------------------- | ------------ | ---------------------------------------------------------------------------------- |
+| `vault.repo`                                                              | —            | **Required.** HTTPS URL, no credentials in it                                      |
+| `server.baseUrl`                                                          | —            | **Required.** External URL; OAuth issuer                                           |
+| `secrets.existingSecret`                                                  | `""`         | Preferred over the inline `secrets.*` values                                       |
+| `secrets.personalAuthTokenReadOnly`, `secrets.staticBearerTokensReadOnly` | `""`         | Optional read-only credentials                                                     |
+| `image.tag`                                                               | `latest`     | Pin a `main-<sha>` tag for reproducible installs                                   |
+| `vault.hooksPath`                                                         | `.githooks`  | The vault's own pre-commit runs on the server's writes. Applied at clone time only |
+| `vault.guidanceFiles`                                                     | Brain layout | Served as a resource and write-protected                                           |
+| `server.exposedTools`                                                     | `""` (all)   | Allowlist; omitted tools disappear from `tools/list`                               |
+| `conventions.*`                                                           | Brain layout | Inbox, tasks, templates and journal locations                                      |
+| `replicaCount`                                                            | `1`          | More than 1 is refused: sessions live in memory                                    |
+| `podSecurityContext`                                                      | `{}`         | Auto: nothing on OpenShift, UID/fsGroup `10001` elsewhere                          |
+| `extraEnv`, `extraVolumes`, `extraVolumeMounts`                           | `[]`         | e.g. `https_proxy`                                                                 |
 
 See [`values.yaml`](values.yaml) for the full list.
 

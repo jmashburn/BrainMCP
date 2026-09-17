@@ -200,6 +200,41 @@ EXPOSED_TOOLS=read-note,read-notes,search-vault,capture-inbox,add-task,log-journ
 Skipped tools are absent from `tools/list` entirely, not merely refused on call
 — a tool the model cannot see is one it cannot be talked into using.
 
+### Read-only and read-write access
+
+A credential grants either read access or read-and-write access. Which one is
+decided where the credential is proven:
+
+| Credential                                      | Read and write             | Read only                     |
+| ----------------------------------------------- | -------------------------- | ----------------------------- |
+| Login token (typed on the OAuth login page)     | `PERSONAL_AUTH_TOKEN`      | `PERSONAL_AUTH_TOKEN_RO`      |
+| Static bearer token (`Authorization: Bearer …`) | `MCP_STATIC_BEARER_TOKENS` | `MCP_STATIC_BEARER_TOKENS_RO` |
+
+OAuth tokens carry the level as a scope (`vault:read`, or `vault:read
+vault:write`) and keep it across refreshes. A client may ask for a narrower
+scope than its login allows — logging in with the read-write token while
+requesting only `vault:read` yields a read-only token — but never a wider one.
+The consent page says which is being granted.
+
+Read-only access is enforced twice, and each layer holds without the other:
+
+- **The tools are not there.** A read-only session is offered `read-note`,
+  `read-notes`, `search-vault`, `list-files-in-vault`, `list-files-in-dir`,
+  plus `orient`, `search` and `fetch`. Write tools are absent from
+  `tools/list`, not merely refused. `EXPOSED_TOOLS` can narrow this further
+  and cannot widen it.
+- **The vault refuses.** A read-only session is handed a vault that rejects
+  every write, so a write tool that reached it by mistake still could not
+  write.
+
+A session keeps the level it was opened with: presenting another credential's
+session id gets a `403`, in either direction. Anything ambiguous fails closed —
+a token listed at both levels, or the two login tokens set to the same value,
+is read-only, and the server says so in its startup log.
+
+Read-only limits what a client can _do_, not what it can _see_: it can still
+read every note the path guards allow.
+
 ### Secret scanning in the image
 
 The published image includes `gitleaks`, pinned, so a vault whose hook shells
@@ -436,6 +471,7 @@ Required environment variables:
 
 - All core variables (see `.env.example`)
 - OAuth variables: `OAUTH_CLIENT_ID`, `OAUTH_CLIENT_SECRET`, `PERSONAL_AUTH_TOKEN`, `BASE_URL`
+- Optional read-only credentials: `PERSONAL_AUTH_TOKEN_RO`, `MCP_STATIC_BEARER_TOKENS_RO` (see [Read-only and read-write access](#read-only-and-read-write-access))
 
 See [Deployment Guide](docs/DEPLOYMENT.md#http-mode) for detailed configuration and ChatGPT integration.
 

@@ -84,7 +84,8 @@ conventions:
 secrets:
   # Preferred: name a Secret you manage yourself. It must carry GIT_TOKEN,
   # OAUTH_CLIENT_SECRET and PERSONAL_AUTH_TOKEN, and may carry
-  # MCP_STATIC_BEARER_TOKENS. The values below are then ignored.
+  # PERSONAL_AUTH_TOKEN_RO, MCP_STATIC_BEARER_TOKENS and
+  # MCP_STATIC_BEARER_TOKENS_RO. The values below are then ignored.
   existingSecret: ''
   # Otherwise the chart renders a Secret from these. They end up in the Helm
   # release record, so prefer existingSecret outside a lab.
@@ -92,9 +93,14 @@ secrets:
   oauthClientSecret: ''
   # What a human types on the login page. Holder has the whole vault.
   personalAuthToken: ''
+  # Optional second login token that grants read-only access: a client logged
+  # in with it is never offered a tool that changes the vault.
+  personalAuthTokenReadOnly: ''
   # Comma-separated fixed bearer tokens for header-only clients. Same trust
   # level as personalAuthToken.
   staticBearerTokens: ''
+  # The same, read-only. A token in both lists is treated as read-only.
+  staticBearerTokensReadOnly: ''
 
 # The server's vault clone. Disposable: it is re-cloned when missing.
 vaultStorage:

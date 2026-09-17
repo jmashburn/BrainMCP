@@ -12,22 +12,37 @@ import { randomUUID } from 'node:crypto';
 import * as auth from '@/services/auth';
 import { logger } from '@/utils/logger';
 import { timingSafeEqual } from 'node:crypto';
+import type { AccessLevel } from '@/services/access';
+
+function matchesAny(raw: string | undefined, token: string): boolean {
+  const given = Buffer.from(token);
+  return (raw || '')
+    .split(',')
+    .map(s => s.trim())
+    .filter(Boolean)
+    .some(c => {
+      const cand = Buffer.from(c);
+      return cand.length === given.length && timingSafeEqual(cand, given);
+    });
+}
 
 /**
  * Static bearer tokens, for clients that can send a fixed Authorization header
- * but cannot complete an OAuth flow. Comma-separated in MCP_STATIC_BEARER_TOKENS.
- * Same trust level as PERSONAL_AUTH_TOKEN: anyone holding one has the vault.
+ * but cannot complete an OAuth flow. Comma-separated.
+ *
+ * MCP_STATIC_BEARER_TOKENS grant read and write — the same trust level as
+ * PERSONAL_AUTH_TOKEN: anyone holding one has the vault.
+ * MCP_STATIC_BEARER_TOKENS_RO grant read only.
+ *
+ * Both lists are always checked, and a token that appears in both is a
+ * misconfiguration resolved in favour of the explicit read-only listing: the
+ * operator who wrote a token into the _RO list meant it to be read-only.
  */
-function matchesStaticToken(token: string): boolean {
-  const configured = (process.env.MCP_STATIC_BEARER_TOKENS || '')
-    .split(',')
-    .map(s => s.trim())
-    .filter(Boolean);
-  const given = Buffer.from(token);
-  return configured.some(c => {
-    const cand = Buffer.from(c);
-    return cand.length === given.length && timingSafeEqual(cand, given);
-  });
+export function accessForStaticToken(token: string): AccessLevel | null {
+  const isWrite = matchesAny(process.env.MCP_STATIC_BEARER_TOKENS, token);
+  const isRead = matchesAny(process.env.MCP_STATIC_BEARER_TOKENS_RO, token);
+  if (isRead) return 'read';
+  return isWrite ? 'write' : null;
 }
 
 /**
@@ -78,12 +93,9 @@ async function authenticateToken(req: Request, res: Response, next: NextFunction
 
   const token = authHeader.substring(7);
 
-  if (matchesStaticToken(token)) {
-    next();
-    return;
-  }
+  const access = accessForStaticToken(token) ?? (await auth.resolveAccessToken(token));
 
-  if (!(await auth.validateAccessToken(token))) {
+  if (!access) {
     logger.warn('MCP request rejected: invalid or expired bearer token', {
       path: req.path,
       tokenPrefix: token.slice(0, 4),
@@ -99,8 +111,11 @@ async function authenticateToken(req: Request, res: Response, next: NextFunction
     return;
   }
 
+  res.locals.access = access;
   next();
 }
+
+const accessOf = (res: Response): AccessLevel => res.locals.access as AccessLevel;
 
 /**
  * Register MCP endpoint on an Express app
@@ -118,7 +133,12 @@ export interface McpRouteOptions {
    * 405 on GET as a failed connection (the ChatGPT desktop app does). Lambda
    * stays stateless (no option) because it cannot hold a stream open.
    */
-  createServer?: () => McpServer;
+  createServer?: (access: AccessLevel) => McpServer;
+  /**
+   * Stateless mode only: the server handed to read-only credentials. Without
+   * one, read-only credentials are refused rather than served the full server.
+   */
+  readOnlyServer?: McpServer;
 }
 
 export function registerMcpRoute(
@@ -151,6 +171,16 @@ export function registerMcpRoute(
     const method = req.body?.method || 'unknown';
     const requestId = req.body?.id;
 
+    const server = accessOf(res) === 'write' ? mcpServer : options.readOnlyServer;
+    if (!server) {
+      logger.warn('MCP request rejected: no read-only server configured', { method });
+      res.status(403).json({
+        error: 'insufficient_scope',
+        error_description: 'Read-only credentials are not supported by this deployment',
+      });
+      return;
+    }
+
     const transport = new StreamableHTTPServerTransport({
       sessionIdGenerator: undefined,
       enableJsonResponse: true,
@@ -166,7 +196,7 @@ export function registerMcpRoute(
         requestId,
       });
 
-      await mcpServer.connect(transport);
+      await server.connect(transport);
       await transport.handleRequest(req, res, req.body);
 
       logger.info('MCP request completed', {
@@ -207,8 +237,17 @@ export function registerMcpRoute(
  * `mcp-session-id` and is routed to that pair. GET streams server events,
  * DELETE ends the session.
  */
-function registerStatefulRoutes(app: Express, createServer: () => McpServer): void {
-  const sessions = new Map<string, StreamableHTTPServerTransport>();
+function registerStatefulRoutes(
+  app: Express,
+  createServer: (access: AccessLevel) => McpServer,
+): void {
+  // A session is built for one access level and keeps it. The level travels
+  // with the session, not the request, so GET/DELETE — which some clients send
+  // without a bearer — cannot be used to reach a wider server.
+  const sessions = new Map<
+    string,
+    { transport: StreamableHTTPServerTransport; access: AccessLevel }
+  >();
 
   const sessionIdOf = (req: Request): string | undefined => {
     const raw = req.headers['mcp-session-id'];
@@ -230,7 +269,22 @@ function registerStatefulRoutes(app: Express, createServer: () => McpServer): vo
     const sid = sessionIdOf(req);
 
     try {
-      let transport = sid ? sessions.get(sid) : undefined;
+      const existing = sid ? sessions.get(sid) : undefined;
+      if (existing && existing.access !== accessOf(res)) {
+        // A session id is not a credential upgrade: a read token presenting a
+        // write session's id (or the reverse) gets neither.
+        logger.warn('MCP request rejected: credential does not match session access', {
+          sid: sid!.slice(0, 8),
+          method,
+        });
+        res.status(403).json({
+          jsonrpc: '2.0',
+          error: { code: -32000, message: 'Forbidden: credential does not match this session' },
+          id: requestId ?? null,
+        });
+        return;
+      }
+      let transport = existing?.transport;
 
       if (!transport) {
         if (sid) {
@@ -242,12 +296,17 @@ function registerStatefulRoutes(app: Express, createServer: () => McpServer): vo
           return badSession(res, 'Bad Request: no valid session ID provided');
         }
 
+        const access = accessOf(res);
         const newTransport = new StreamableHTTPServerTransport({
           sessionIdGenerator: () => randomUUID(),
           enableJsonResponse: true,
           onsessioninitialized: id => {
-            sessions.set(id, newTransport);
-            logger.info('MCP session opened', { sid: id.slice(0, 8), sessions: sessions.size });
+            sessions.set(id, { transport: newTransport, access });
+            logger.info('MCP session opened', {
+              sid: id.slice(0, 8),
+              access,
+              sessions: sessions.size,
+            });
           },
         });
         newTransport.onclose = () => {
@@ -261,7 +320,7 @@ function registerStatefulRoutes(app: Express, createServer: () => McpServer): vo
           sanitizeToolsList(msg);
           return originalSend(msg, opts);
         };
-        await createServer().connect(newTransport);
+        await createServer(access).connect(newTransport);
         transport = newTransport;
       }
 
@@ -290,7 +349,7 @@ function registerStatefulRoutes(app: Express, createServer: () => McpServer): vo
 
   const sessionOnly = async (req: Request, res: Response) => {
     const sid = sessionIdOf(req);
-    const transport = sid ? sessions.get(sid) : undefined;
+    const transport = sid ? sessions.get(sid)?.transport : undefined;
     if (!transport) {
       logger.warn('MCP stream/delete for unknown session', {
         method: req.method,

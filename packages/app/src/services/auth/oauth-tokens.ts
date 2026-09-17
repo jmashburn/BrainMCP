@@ -1,6 +1,7 @@
 import { getAuthStore } from './auth-store-singleton.js';
 import { generateSecureToken, verifyCodeChallenge } from './pkce.js';
 import { logger } from '@/utils/logger';
+import { type AccessLevel, accessFromScope, scopeFor } from '@/services/access';
 
 const AUTH_CODE_EXPIRY = 10 * 60 * 1000;
 const ACCESS_TOKEN_EXPIRY = 60 * 60 * 1000;
@@ -9,6 +10,7 @@ export async function createAuthorizationCode(
   codeChallenge: string,
   codeChallengeMethod: 'S256' | 'plain',
   redirectUri: string,
+  access: AccessLevel,
 ): Promise<string> {
   const code = generateSecureToken();
   const now = Date.now();
@@ -21,6 +23,7 @@ export async function createAuthorizationCode(
     redirectUri,
     createdAt: now,
     expiresAt: now + AUTH_CODE_EXPIRY,
+    access,
   });
 
   return code;
@@ -35,6 +38,7 @@ export async function exchangeCodeForToken(
   accessToken: string;
   refreshToken: string;
   expiresIn: number;
+  scope: string;
 } | null> {
   const expectedClientId = process.env.OAUTH_CLIENT_ID || 'obsidian-mcp-client';
   if (clientId !== expectedClientId) {
@@ -72,7 +76,8 @@ export async function exchangeCodeForToken(
     refreshToken,
     createdAt: now,
     expiresAt: now + ACCESS_TOKEN_EXPIRY,
-    scope: 'vault:read vault:write',
+    // A code with no recorded access predates access levels; read is the safe reading.
+    scope: scopeFor(authCode.access ?? 'read'),
   };
 
   await store.setAccessToken(tokenData);
@@ -80,6 +85,7 @@ export async function exchangeCodeForToken(
     accessToken,
     refreshToken,
     expiresIn: Math.floor(ACCESS_TOKEN_EXPIRY / 1000),
+    scope: tokenData.scope,
   };
 }
 
@@ -87,6 +93,7 @@ export async function refreshAccessToken(refreshToken: string): Promise<{
   accessToken: string;
   refreshToken: string;
   expiresIn: number;
+  scope: string;
 } | null> {
   const store = getAuthStore();
   const refreshData = await store.getRefreshToken(refreshToken);
@@ -121,23 +128,31 @@ export async function refreshAccessToken(refreshToken: string): Promise<{
     accessToken: newAccessToken,
     refreshToken: newRefreshToken,
     expiresIn: Math.floor(ACCESS_TOKEN_EXPIRY / 1000),
+    scope: tokenData.scope,
   };
 }
 
-export async function validateAccessToken(token: string): Promise<boolean> {
+/**
+ * The access a live token grants, or null if it is unknown or expired.
+ */
+export async function resolveAccessToken(token: string): Promise<AccessLevel | null> {
   const store = getAuthStore();
   const tokenData = await store.getAccessToken(token);
 
   if (!tokenData) {
-    return false;
+    return null;
   }
 
   if (Date.now() > tokenData.expiresAt) {
     await store.deleteAccessToken(token);
-    return false;
+    return null;
   }
 
-  return true;
+  return accessFromScope(tokenData.scope);
+}
+
+export async function validateAccessToken(token: string): Promise<boolean> {
+  return (await resolveAccessToken(token)) !== null;
 }
 
 export async function revokeToken(token: string): Promise<boolean> {

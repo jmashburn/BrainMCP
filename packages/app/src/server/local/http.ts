@@ -24,7 +24,12 @@ import { createInMemoryAuthStore } from '@/services/auth/stores';
 import { setAuthStore } from '@/services/auth';
 import { loadEnv, ensureEnvVars } from '@/env';
 import { logger } from '@/utils/logger';
-import { MCP_SERVER_INSTRUCTIONS } from '@/server/shared/instructions';
+import {
+  MCP_SERVER_INSTRUCTIONS,
+  MCP_SERVER_INSTRUCTIONS_READ_ONLY,
+} from '@/server/shared/instructions';
+import { type AccessLevel, describeAccessConfig } from '@/services/access';
+import { readOnlyVaultManager } from '@/services/read-only-vault';
 import { configureLogger } from '@/utils/logger';
 
 loadEnv();
@@ -59,20 +64,32 @@ const vaultManager = createVaultManager(LOCAL_VAULT_PATH);
 
 // One server per MCP session (see registerMcpRoute's stateful mode); the
 // vault manager is shared, so all sessions see the same clone.
-const createServer = (): McpServer => {
+const readOnlyVault = readOnlyVaultManager(vaultManager);
+
+const createServer = (access: AccessLevel): McpServer => {
+  const canWrite = access === 'write';
+  // A read session gets a vault that refuses writes as well as a shorter tool
+  // list, so a write tool that slipped through still could not write.
+  const vault = canWrite ? vaultManager : readOnlyVault;
   const server = new McpServer({
     name: 'obsidian-mcp',
     version: '1.0.0',
-    instructions: MCP_SERVER_INSTRUCTIONS,
+    instructions: canWrite ? MCP_SERVER_INSTRUCTIONS : MCP_SERVER_INSTRUCTIONS_READ_ONLY,
   });
-  registerTools(server, () => vaultManager);
-  registerResources(server, () => vaultManager);
+  registerTools(server, () => vault, access);
+  registerResources(server, () => vault);
   registerPrompts(server);
-  registerConnectorTools(server, () => vaultManager);
-  registerOrientTool(server, () => vaultManager);
+  registerConnectorTools(server, () => vault);
+  registerOrientTool(server, () => vault);
   return server;
 };
-const mcpServer = createServer();
+const mcpServer = createServer('write');
+
+const accessConfig = describeAccessConfig();
+logger.info('Access levels configured', { ...accessConfig });
+for (const problem of accessConfig.problems) {
+  logger.warn(`Access misconfiguration: ${problem}`);
+}
 
 const app = express();
 // Request log: every request, with status, so a client that gives up after

@@ -4,6 +4,8 @@
  * Instructions provided to LLM clients on how to effectively use the server.
  */
 
+export const MCP_SERVER_INSTRUCTIONS_READ_ONLY = `This server provides read-only access to an Obsidian vault: you can search, list, and read notes, but not create or change them. If the user asks for a change, say that this connection is read-only rather than attempting it.`;
+
 export const MCP_SERVER_INSTRUCTIONS = `This server provides access to an Obsidian vault with tools for managing notes, tags, and directories.
 
 **IMPORTANT: Journal Logging**

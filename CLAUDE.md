@@ -170,7 +170,9 @@ Additional for HTTP/Lambda modes (OAUTH_ENV_VARS):
 
 - `OAUTH_CLIENT_ID` - OAuth client identifier
 - `OAUTH_CLIENT_SECRET` - OAuth client secret (generate with crypto.randomBytes)
-- `PERSONAL_AUTH_TOKEN` - User password for OAuth login (generate with crypto.randomBytes)
+- `PERSONAL_AUTH_TOKEN` - User password for OAuth login, read-and-write (generate with crypto.randomBytes)
+- `PERSONAL_AUTH_TOKEN_RO` - Optional second login password that grants read-only access
+- `MCP_STATIC_BEARER_TOKENS` / `MCP_STATIC_BEARER_TOKENS_RO` - Optional comma-separated fixed bearer tokens, read-and-write / read-only. Access levels live in `services/access.ts`; read sessions get a filtered tool list (`READ_ONLY_TOOLS` in `mcp/tool-allowlist.ts`) and a vault that refuses writes (`services/read-only-vault.ts`)
 - `BASE_URL` - Server URL for OAuth callbacks
 
 Optional:
