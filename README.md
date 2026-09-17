@@ -707,6 +707,7 @@ If your vault contains a README.md file in its root directory, LLMs can access i
 - [Deployment Guide](docs/DEPLOYMENT.md) - Complete deployment instructions for all modes
 - [Helm Chart](brainmcp-chart/README.md) - Install the HTTP server on Kubernetes or OpenShift
 - [Claude Code plugin](plugins/brain/README.md) - Register a running server with Claude Code in one step
+- [Claude Code plugin, token variant](plugins/brain-token/README.md) - The same, with a static bearer token instead of the login: per-person, revocable credentials
 - [Git Providers](docs/GIT_PROVIDERS.md) - Setup instructions for GitHub, GitLab, Bitbucket, and self-hosted providers
 
 ## License

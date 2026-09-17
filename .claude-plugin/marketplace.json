@@ -12,6 +12,13 @@
       "category": "productivity",
       "source": "./plugins/brain",
       "homepage": "https://github.com/jmashburn/BrainMCP/tree/main/plugins/brain"
+    },
+    {
+      "name": "brain-token",
+      "description": "The same server, authenticated with a static bearer token instead of the browser login \u2014 for giving several people their own revocable, read-only credential",
+      "category": "productivity",
+      "source": "./plugins/brain-token",
+      "homepage": "https://github.com/jmashburn/BrainMCP/tree/main/plugins/brain-token"
     }
   ]
 }
