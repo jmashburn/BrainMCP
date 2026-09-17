@@ -58,3 +58,30 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+      # `latest` alone will not move a Helm release: an upgrade with unchanged
+      # values renders the same pod template, so nothing rolls and the new image
+      # is never pulled. The per-commit tag changes the template, which is what
+      # makes the upgrade take — so hand over the exact command.
+      - name: Summarize how to deploy this build
+        env:
+          TAGS: ${{ steps.meta.outputs.tags }}
+        run: |
+          # `|| true`: the image is already pushed by now, so a tag that does not
+          # match must not fail the job — it just means no command is printed.
+          pinned="$(echo "$TAGS" | grep -E ':main-[0-9a-f]+$' | head -n1 || true)"
+          {
+            echo "### Image published"
+            echo ""
+            echo '```'
+            echo "$TAGS"
+            echo '```'
+            if [ -n "$pinned" ]; then
+              echo ""
+              echo "Deploy this build with Helm:"
+              echo ""
+              echo '```bash'
+              echo "helm upgrade brainmcp ./brainmcp-chart -n brain --reuse-values --set image.tag=${pinned##*:}"
+              echo '```'
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"

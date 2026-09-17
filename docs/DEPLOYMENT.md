@@ -4,10 +4,44 @@ Complete deployment instructions for all deployment modes of the Obsidian MCP Se
 
 ## Table of Contents
 
+- [From a push to a running pod](#from-a-push-to-a-running-pod)
 - [Environment Configuration](#environment-configuration)
 - [Stdio Mode (Local)](#stdio-mode-local)
 - [HTTP Mode](#http-mode)
 - [AWS Lambda](#aws-lambda)
+
+## From a push to a running pod
+
+Every push to `main` runs the **Release** workflow
+(`.github/workflows/release.yml`): the tests, then a multi-architecture
+(amd64, arm64) image pushed to `ghcr.io/<owner>/<repo>` with two tags:
+
+| Tag                | Moves?     | Use it for                                                       |
+| ------------------ | ---------- | ---------------------------------------------------------------- |
+| `main-<short sha>` | Never      | Deploying. One per commit, so it also names what to roll back to |
+| `latest`           | Every push | Trying the newest build by hand                                  |
+
+Deploy a build by naming its tag — the workflow's run summary prints this
+command for you:
+
+```bash
+helm upgrade brainmcp ./brainmcp-chart -n brain --reuse-values --set image.tag=main-c4786cc
+```
+
+Rolling back is the same command with an older tag.
+
+**Why not just leave the chart on `latest`?** Because Helm would never pick up
+a new image. An upgrade with unchanged values renders an identical pod
+template, Kubernetes sees nothing to change, and no pod is replaced — so the
+new `latest` is not pulled until something else happens to restart the pod.
+Changing `image.tag` changes the template, and that is what makes the rollout
+happen. (`kubectl rollout restart` also works with `latest`, but then nothing
+records which build is running.)
+
+Branches other than `main` run the tests only; they do not publish an image.
+
+A rollout restarts the server, and OAuth sessions are held in memory, so each
+deploy signs connected clients out once.
 
 ## Environment Configuration
 
