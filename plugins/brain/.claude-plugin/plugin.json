@@ -1,0 +1,21 @@
+{
+  "name": "brain",
+  "displayName": "Brain",
+  "version": "0.1.0",
+  "description": "Registers your BrainMCP server as an MCP server, so Claude Code can search, read and (with a read-write login) update the vault",
+  "author": {
+    "name": "Jared Mashburn"
+  },
+  "homepage": "https://github.com/jmashburn/BrainMCP/tree/main/plugins/brain",
+  "repository": "https://github.com/jmashburn/BrainMCP",
+  "license": "MIT",
+  "keywords": ["mcp", "obsidian", "memory", "vault"],
+  "userConfig": {
+    "url": {
+      "type": "string",
+      "title": "BrainMCP server URL",
+      "description": "The server's MCP endpoint, ending in /mcp (for example https://brain.example.com/mcp). Give the endpoint, not the site root.",
+      "required": true
+    }
+  }
+}
