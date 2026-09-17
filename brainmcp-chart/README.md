@@ -93,12 +93,14 @@ URL is wrong; a `403` usually means a proxy in front of it refused the client.
 
 ## Self-hosted git remotes
 
-| Situation                                                                       | Setting                                                                 |
-| ------------------------------------------------------------------------------- | ----------------------------------------------------------------------- |
-| Host is not `github.com`/`bitbucket.org` and its name does not contain `gitlab` | `git.username` — use `oauth2` for a GitLab access token                 |
-| Remote rejects commits from unknown authors                                     | `git.authorName`, `git.authorEmail`                                     |
-| Certificate signed by a private CA                                              | `git.caBundle.existingConfigMap` (and `git.caBundle.key`)               |
-| Vault has a `.gitlab-ci.yml` clients must not rewrite                           | `vault.protectedPaths` — it **replaces** the defaults, so list them all |
+| Situation                                                                       | Setting                                                                                                                                                 |
+| ------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Host is not `github.com`/`bitbucket.org` and its name does not contain `gitlab` | `git.username` — use `oauth2` for a GitLab access token                                                                                                 |
+| Remote rejects commits from unknown authors                                     | `git.authorName`, `git.authorEmail`                                                                                                                     |
+| Certificate signed by a private CA                                              | `git.caBundle.existingConfigMap` (and `git.caBundle.key`)                                                                                               |
+| Authenticating with a GitLab **deploy token**                                   | `git.username` = the deploy token's username (access tokens need nothing: `oauth2` is the default)                                                      |
+| Cluster shards ingress by label                                                 | `route.labels`, e.g. `--set route.labels.shard=internal` — otherwise the default router serves the Route on a host that does not match `server.baseUrl` |
+| Vault has a `.gitlab-ci.yml` clients must not rewrite                           | `vault.protectedPaths` — it **replaces** the defaults, so list them all                                                                                 |
 
 ```bash
 kubectl -n brain create configmap corp-ca --from-file=ca.crt=/path/to/corp-ca.pem
