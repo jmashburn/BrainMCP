@@ -5,3 +5,6 @@ cdk.out
 coverage
 .cdk.staging
 *.log
+
+# Helm templates are Go templates, not YAML, until rendered
+brainmcp-chart/templates

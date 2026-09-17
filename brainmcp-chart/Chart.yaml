@@ -1,0 +1,21 @@
+apiVersion: v2
+name: brainmcp
+description: MCP server for a git-backed Obsidian vault, with vault guards and vault-taught orientation
+type: application
+version: 0.1.0
+appVersion: '1.0.0'
+
+keywords:
+  - mcp
+  - obsidian
+  - model-context-protocol
+  - git
+
+maintainers:
+  - name: Jared Mashburn
+
+home: https://github.com/jmashburn/BrainMCP
+sources:
+  - https://github.com/jmashburn/BrainMCP
+
+kubeVersion: '>=1.25.0-0'

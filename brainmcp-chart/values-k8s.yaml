@@ -1,0 +1,13 @@
+# Plain Kubernetes overlay: expose through an Ingress.
+#
+#   helm install brainmcp ./brainmcp-chart -n brain --create-namespace \
+#     -f brainmcp-chart/values-k8s.yaml \
+#     --set vault.repo=https://git.example.com/me/vault.git \
+#     --set server.baseUrl=https://brainmcp.example.com \
+#     --set ingress.host=brainmcp.example.com \
+#     --set secrets.existingSecret=brainmcp-secrets
+ingress:
+  enabled: true
+  tls:
+    enabled: true
+    secretName: brainmcp-tls

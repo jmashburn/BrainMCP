@@ -1,0 +1,30 @@
+{{- if and .Values.route.enabled (include "brainmcp.isOpenShift" .) }}
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: {{ include "brainmcp.fullname" . }}
+  labels:
+    {{- include "brainmcp.labels" . | nindent 4 }}
+  {{- with .Values.route.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  {{- with .Values.route.host }}
+  host: {{ . }}
+  {{- end }}
+  to:
+    kind: Service
+    name: {{ include "brainmcp.fullname" . }}
+    weight: 100
+  port:
+    targetPort: http
+  {{- if .Values.route.tls.enabled }}
+  tls:
+    termination: {{ .Values.route.tls.termination }}
+    {{- with .Values.route.tls.insecureEdgeTerminationPolicy }}
+    insecureEdgeTerminationPolicy: {{ . }}
+    {{- end }}
+  {{- end }}
+  wildcardPolicy: None
+{{- end }}

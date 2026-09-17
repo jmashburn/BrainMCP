@@ -1,0 +1,53 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "brainmcp.fullname" . }}
+  labels:
+    {{- include "brainmcp.labels" . | nindent 4 }}
+data:
+  VAULT_REPO: {{ required "vault.repo is required: the HTTPS URL of the vault's git repository" .Values.vault.repo | quote }}
+  VAULT_BRANCH: {{ .Values.vault.branch | quote }}
+  {{- with .Values.vault.hooksPath }}
+  VAULT_HOOKS_PATH: {{ . | quote }}
+  {{- end }}
+  {{- with .Values.vault.guidanceFiles }}
+  VAULT_GUIDANCE_FILES: {{ . | quote }}
+  {{- end }}
+  {{- with .Values.vault.protectedPaths }}
+  VAULT_PROTECTED_PATHS: {{ . | quote }}
+  {{- end }}
+  {{- with .Values.git.username }}
+  GIT_USERNAME: {{ . | quote }}
+  {{- end }}
+  {{- with .Values.git.authorName }}
+  GIT_AUTHOR_NAME: {{ . | quote }}
+  GIT_COMMITTER_NAME: {{ . | quote }}
+  {{- end }}
+  {{- with .Values.git.authorEmail }}
+  GIT_AUTHOR_EMAIL: {{ . | quote }}
+  GIT_COMMITTER_EMAIL: {{ . | quote }}
+  {{- end }}
+  BASE_URL: {{ required "server.baseUrl is required: the externally reachable URL, used as the OAuth issuer" .Values.server.baseUrl | quote }}
+  PORT: {{ .Values.server.port | quote }}
+  LOG_LEVEL: {{ .Values.server.logLevel | quote }}
+  OAUTH_CLIENT_ID: {{ .Values.server.oauthClientId | quote }}
+  SESSION_EXPIRY_MS: {{ .Values.server.sessionExpiryMs | quote }}
+  CONNECTOR_VAULT_NAME: {{ .Values.server.connectorVaultName | quote }}
+  {{- with .Values.server.exposedTools }}
+  EXPOSED_TOOLS: {{ . | quote }}
+  {{- end }}
+  {{- with .Values.server.noteSource }}
+  NOTE_SOURCE: {{ . | quote }}
+  {{- end }}
+  TEMPLATES_DIR: {{ .Values.conventions.templatesDir | quote }}
+  INBOX_DIR: {{ .Values.conventions.inboxDir | quote }}
+  {{- with .Values.conventions.inboxTemplate }}
+  INBOX_TEMPLATE: {{ . | quote }}
+  {{- end }}
+  TASKS_PATH: {{ .Values.conventions.tasksPath | quote }}
+  TASKS_DEFAULT_SECTION: {{ .Values.conventions.tasksDefaultSection | quote }}
+  JOURNAL_PATH_TEMPLATE: {{ .Values.conventions.journal.pathTemplate | quote }}
+  JOURNAL_DATE_FORMAT: {{ .Values.conventions.journal.dateFormat | quote }}
+  JOURNAL_ACTIVITY_SECTION: {{ .Values.conventions.journal.activitySection | quote }}
+  JOURNAL_FILE_TEMPLATE: {{ .Values.conventions.journal.fileTemplate | quote }}
+  JOURNAL_ENTRY_STYLE: {{ .Values.conventions.journal.entryStyle | quote }}

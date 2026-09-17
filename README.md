@@ -630,6 +630,7 @@ If your vault contains a README.md file in its root directory, LLMs can access i
 
 - [Tool Reference](docs/TOOLS.md) - Detailed documentation for the tools with usage examples
 - [Deployment Guide](docs/DEPLOYMENT.md) - Complete deployment instructions for all modes
+- [Helm Chart](brainmcp-chart/README.md) - Install the HTTP server on Kubernetes or OpenShift
 - [Git Providers](docs/GIT_PROVIDERS.md) - Setup instructions for GitHub, GitLab, Bitbucket, and self-hosted providers
 
 ## License

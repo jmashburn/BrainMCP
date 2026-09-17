@@ -1,0 +1,30 @@
+BrainMCP is installed as {{ include "brainmcp.fullname" . }} in namespace {{ .Release.Namespace }}.
+
+  MCP endpoint:  {{ .Values.server.baseUrl }}/mcp     <- give clients this, not the site root
+  Health:        {{ .Values.server.baseUrl }}/health
+  Vault:         {{ .Values.vault.repo }} ({{ .Values.vault.branch }})
+
+Check it:
+
+  kubectl -n {{ .Release.Namespace }} rollout status deploy/{{ include "brainmcp.fullname" . }}
+  kubectl -n {{ .Release.Namespace }} logs deploy/{{ include "brainmcp.fullname" . }} | grep -E 'hooks|protection'
+
+  An unauthenticated POST to /mcp must return 401, not 404 or 200:
+  curl -s -o /dev/null -w '%{http_code}\n' -X POST {{ .Values.server.baseUrl }}/mcp
+{{- if and .Values.route.enabled (not (include "brainmcp.isOpenShift" .)) }}
+
+WARNING: route.enabled is set but this cluster has no Route API; no Route was created.
+{{- end }}
+{{- if not (or .Values.route.enabled .Values.ingress.enabled) }}
+
+Nothing exposes the Service outside the cluster. For a quick look:
+  kubectl -n {{ .Release.Namespace }} port-forward svc/{{ include "brainmcp.fullname" . }} {{ .Values.service.port }}:{{ .Values.service.port }}
+OAuth redirects use server.baseUrl, so browser login only works through that URL.
+{{- end }}
+{{- if not .Values.vault.hooksPath }}
+
+WARNING: vault.hooksPath is empty, so the server's commits are not secret-scanned.
+{{- end }}
+
+The server only sees what has been pushed to the vault remote, and the clone is
+re-created whenever the pod restarts.
