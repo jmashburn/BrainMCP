@@ -96,6 +96,11 @@ export function ensureFrontmatter(
  * Expand {{placeholders}} in a template. Unknown placeholders are left intact
  * so a half-filled template is visibly incomplete rather than silently blanked.
  */
+/** Whether a template has a `{{key}}` slot for the given variable. */
+export function templateHasSlot(template: string, key: string): boolean {
+  return new RegExp(`\\{\\{${key}\\}\\}`).test(template);
+}
+
 export function renderTemplate(template: string, vars: Record<string, string>): string {
   return template.replace(/\{\{(\w+)\}\}/g, (match, key: string) =>
     Object.prototype.hasOwnProperty.call(vars, key) ? vars[key] : match,
