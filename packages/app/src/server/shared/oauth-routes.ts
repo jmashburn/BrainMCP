@@ -206,6 +206,19 @@ export function registerOAuthRoutes(app: Express, config: OAuthConfig): void {
     );
   });
 
+  // POST, not a link: a GET would let any page the user visits sign them out
+  // of a pending authorization by embedding the URL.
+  app.post('/oauth/switch', async (req, res) => {
+    const sessionId = await resolveSession(req);
+    const newSessionId = sessionId ? await auth.restartLogin(sessionId) : null;
+
+    if (!newSessionId) {
+      return res.redirect('/login');
+    }
+    setSessionCookie(res, newSessionId);
+    res.redirect(withRef('/login', newSessionId));
+  });
+
   app.post('/oauth/approve', async (req, res) => {
     const sessionId = await resolveSession(req);
 
