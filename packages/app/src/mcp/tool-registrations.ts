@@ -45,9 +45,16 @@ export function registerTools(
   getVaultManager: () => VaultManager,
   access: AccessLevel = 'write',
 ): void {
-  // Every registerTool call below goes through the allowlist. Filtering here
-  // rather than at each call site means a tool added later is covered by
-  // default instead of being exposed until someone remembers to gate it.
+  // Every registerTool call in THIS function goes through the allowlist.
+  // Filtering here rather than at each call site means a tool added below is
+  // covered by default instead of being exposed until someone remembers to
+  // gate it.
+  //
+  // It does not cover `orient`, `search` and `fetch`: the server entry points
+  // register those on the raw server, on purpose, so that orientation and the
+  // connector contract stay available whatever EXPOSED_TOOLS says. All three
+  // only read, and a read session hands them the vault that refuses writes.
+  // A tool that can write must be registered here, never beside them.
   const server = applyToolAllowlist(rawServer, process.env.EXPOSED_TOOLS, access);
 
   server.registerTool(
