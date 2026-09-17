@@ -1,3 +1,5 @@
+import type { AccessLevel } from '@/services/access';
+
 /**
  * OAuth HTML Pages
  *
@@ -152,7 +154,12 @@ export function loginPage(error?: string, sessionRef?: string): string {
 /**
  * Consent screen - asks user to approve ChatGPT/Claude access
  */
-export function consentPage(clientId: string, sessionRef?: string): string {
+export function consentPage(
+  clientId: string,
+  sessionRef?: string,
+  access: AccessLevel = 'write',
+): string {
+  const canWrite = access === 'write';
   const appName = clientId.includes('chatgpt')
     ? 'ChatGPT'
     : clientId.includes('claude')
@@ -327,13 +334,17 @@ export function consentPage(clientId: string, sessionRef?: string): string {
         </div>
       </div>
 
-      <div class="permission-item">
+      ${
+        canWrite
+          ? `<div class="permission-item">
         <div class="permission-icon">✏️</div>
         <div class="permission-text">
           <strong>Modify your notes</strong>
           <span>Create, edit, and delete files in your vault</span>
         </div>
-      </div>
+      </div>`
+          : ''
+      }
 
       <div class="permission-item">
         <div class="permission-icon">🔍</div>
@@ -343,16 +354,26 @@ export function consentPage(clientId: string, sessionRef?: string): string {
         </div>
       </div>
 
-      <div class="permission-item">
+      ${
+        canWrite
+          ? `<div class="permission-item">
         <div class="permission-icon">🏷️</div>
         <div class="permission-text">
           <strong>Manage tags</strong>
           <span>Add, remove, and rename tags in your notes</span>
         </div>
-      </div>
+      </div>`
+          : `<div class="permission-item">
+        <div class="permission-icon">🔒</div>
+        <div class="permission-text">
+          <strong>Read-only access</strong>
+          <span>It will not be able to create, change, or delete anything</span>
+        </div>
+      </div>`
+      }
     </div>
 
-    <form method="POST" action="/oauth/approve${sessionRef ? `?s=${encodeURIComponent(sessionRef)}` : ''}">
+    <form method="POST" action="/oauth/approve${sessionRef ? `?s=${encodeURIComponent(sessionRef)}` : ''}" onsubmit="this.querySelector('.btn-approve').disabled = true">
       ${sessionRef ? `<input type="hidden" name="s" value="${sessionRef}" />` : ''}
       <div class="actions">
         <button type="button" class="btn-deny" onclick="window.location.href='/oauth/deny${sessionRef ? `?s=${encodeURIComponent(sessionRef)}` : ''}'">

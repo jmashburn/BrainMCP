@@ -18,7 +18,12 @@ import { registerMcpRoute } from '@/server/shared/mcp-routes';
 import { createDynamoDbAuthStore } from '@/services/auth/stores';
 import { setAuthStore } from '@/services/auth';
 import { ensureEnvVars } from '@/env';
-import { MCP_SERVER_INSTRUCTIONS } from '@/server/shared/instructions';
+import {
+  MCP_SERVER_INSTRUCTIONS,
+  MCP_SERVER_INSTRUCTIONS_READ_ONLY,
+} from '@/server/shared/instructions';
+import type { AccessLevel } from '@/services/access';
+import { readOnlyVaultManager } from '@/services/read-only-vault';
 import { configureLogger, logger } from '@/utils/logger';
 import express from 'express';
 import serverless from 'serverless-http';
@@ -57,16 +62,26 @@ function getVaultManager(): VaultManager {
   return vaultManager;
 }
 
-const mcpServer = new McpServer({
-  name: 'obsidian-mcp',
-  version: '1.0.0',
-  instructions: MCP_SERVER_INSTRUCTIONS,
-});
+// Lambda is stateless, so both servers are built once and a request is routed
+// to the one its credential allows.
+function buildServer(access: AccessLevel): McpServer {
+  const canWrite = access === 'write';
+  // Resolved per call: the vault manager is created lazily on first use.
+  const getVault = canWrite ? getVaultManager : () => readOnlyVaultManager(getVaultManager());
+  const server = new McpServer({
+    name: 'obsidian-mcp',
+    version: '1.0.0',
+    instructions: canWrite ? MCP_SERVER_INSTRUCTIONS : MCP_SERVER_INSTRUCTIONS_READ_ONLY,
+  });
+  registerTools(server, getVault, access);
+  registerResources(server, getVault);
+  registerPrompts(server);
+  registerOrientTool(server, getVault);
+  return server;
+}
 
-registerTools(mcpServer, getVaultManager);
-registerResources(mcpServer, getVaultManager);
-registerPrompts(mcpServer);
-registerOrientTool(mcpServer, getVaultManager);
+const mcpServer = buildServer('write');
+const readOnlyServer = buildServer('read');
 
 const OAUTH_CLIENT_ID = process.env.OAUTH_CLIENT_ID || 'obsidian-mcp-client';
 const OAUTH_CLIENT_SECRET = process.env.OAUTH_CLIENT_SECRET;
@@ -146,7 +161,7 @@ registerOAuthRoutes(app, {
   baseUrl: BASE_URL,
 });
 
-registerMcpRoute(app, mcpServer);
+registerMcpRoute(app, mcpServer, { readOnlyServer });
 
 app.get('/health', (_req, res) => {
   res.json({

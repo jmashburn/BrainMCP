@@ -9,6 +9,7 @@ import cookieParser from 'cookie-parser';
 import * as auth from '@/services/auth';
 import * as pages from '@/ui/oauth-pages';
 import { logger } from '@/utils/logger';
+import { SUPPORTED_SCOPES, narrowAccess } from '@/services/access';
 
 export interface OAuthConfig {
   clientId: string;
@@ -69,6 +70,7 @@ export function registerOAuthRoutes(app: Express, config: OAuthConfig): void {
       grant_types_supported: ['authorization_code', 'refresh_token'],
       code_challenge_methods_supported: ['S256', 'plain'],
       token_endpoint_auth_methods_supported: ['client_secret_basic', 'client_secret_post'],
+      scopes_supported: SUPPORTED_SCOPES,
     });
   });
 
@@ -80,6 +82,7 @@ export function registerOAuthRoutes(app: Express, config: OAuthConfig): void {
       resource: baseUrl,
       authorization_servers: [baseUrl],
       bearer_methods_supported: ['header'],
+      scopes_supported: SUPPORTED_SCOPES,
     });
   });
 
@@ -117,6 +120,7 @@ export function registerOAuthRoutes(app: Express, config: OAuthConfig): void {
   app.get('/oauth/authorize', async (req, res) => {
     const { response_type, client_id, redirect_uri, state, code_challenge, code_challenge_method } =
       req.query;
+    const requestedScope = typeof req.query.scope === 'string' ? req.query.scope : undefined;
 
     if (
       !response_type ||
@@ -162,6 +166,7 @@ export function registerOAuthRoutes(app: Express, config: OAuthConfig): void {
       code_challenge as string,
       code_challenge_method as 'S256' | 'plain',
       state as string | undefined,
+      requestedScope,
     );
 
     if (!stored) {
@@ -192,7 +197,13 @@ export function registerOAuthRoutes(app: Express, config: OAuthConfig): void {
         .send(pages.errorPage('invalid_request', 'No pending authorization request'));
     }
 
-    res.send(pages.consentPage(session.pendingAuthRequest.clientId, sessionId));
+    res.send(
+      pages.consentPage(
+        session.pendingAuthRequest.clientId,
+        sessionId,
+        narrowAccess(session.access ?? 'read', session.pendingAuthRequest.scope),
+      ),
+    );
   });
 
   app.post('/oauth/approve', async (req, res) => {
@@ -202,6 +213,9 @@ export function registerOAuthRoutes(app: Express, config: OAuthConfig): void {
       return res.redirect(withRef('/login', sessionId));
     }
 
+    // Read before consuming: the login decided what may be granted, and the
+    // client's requested scope can only narrow it.
+    const session = await auth.getSession(sessionId);
     const pending = await auth.consumePendingAuthRequest(sessionId);
 
     if (!pending) {
@@ -210,10 +224,14 @@ export function registerOAuthRoutes(app: Express, config: OAuthConfig): void {
         .send(pages.errorPage('invalid_request', 'No pending authorization request'));
     }
 
+    const access = narrowAccess(session?.access ?? 'read', pending.scope);
+    logger.info('Authorization approved', { sid: sessionId.slice(0, 8), access });
+
     const code = await auth.createAuthorizationCode(
       pending.codeChallenge,
       pending.codeChallengeMethod,
       pending.redirectUri,
+      access,
     );
 
     const redirectUrl = new URL(pending.redirectUri);
@@ -312,6 +330,7 @@ export function registerOAuthRoutes(app: Express, config: OAuthConfig): void {
         token_type: 'Bearer',
         expires_in: result.expiresIn,
         refresh_token: result.refreshToken,
+        scope: result.scope,
       });
     } else if (grant_type === 'refresh_token') {
       if (!refresh_token) {
@@ -336,6 +355,7 @@ export function registerOAuthRoutes(app: Express, config: OAuthConfig): void {
         token_type: 'Bearer',
         expires_in: result.expiresIn,
         refresh_token: result.refreshToken,
+        scope: result.scope,
       });
     }
 

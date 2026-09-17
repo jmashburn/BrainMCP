@@ -1,6 +1,10 @@
+import type { AccessLevel } from '@/services/access';
+
 export interface SessionData {
   sessionId: string;
   authenticated: boolean;
+  /** What the credential used at login allows. Unset until authenticated. */
+  access?: AccessLevel;
   createdAt: number;
   expiresAt: number;
   pendingAuthRequest?: {
@@ -9,6 +13,8 @@ export interface SessionData {
     state?: string;
     codeChallenge: string;
     codeChallengeMethod: 'S256' | 'plain';
+    /** The `scope` the client asked for, if any. It can narrow, never widen. */
+    scope?: string;
   };
 }
 
@@ -19,6 +25,8 @@ export interface AuthCodeData {
   redirectUri: string;
   createdAt: number;
   expiresAt: number;
+  /** Absent on codes issued before access levels existed; treated as read. */
+  access?: AccessLevel;
 }
 
 export interface AccessTokenData {

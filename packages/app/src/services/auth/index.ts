@@ -2,6 +2,7 @@ export {
   createSession,
   getSession,
   authenticateSession,
+  accessForLoginToken,
   storePendingAuthRequest,
   consumePendingAuthRequest,
   isAuthenticated,
@@ -14,6 +15,7 @@ export {
   exchangeCodeForToken,
   refreshAccessToken,
   validateAccessToken,
+  resolveAccessToken,
   revokeToken,
   validateClientCredentials,
 } from './oauth-tokens.js';

@@ -1,6 +1,8 @@
 import { describe, it, expect, vi } from 'vitest';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
-import { parseExposedTools, applyToolAllowlist } from '@/mcp/tool-allowlist';
+import { parseExposedTools, applyToolAllowlist, READ_ONLY_TOOLS } from '@/mcp/tool-allowlist';
+import { registerTools } from '@/mcp/tool-registrations';
+import { InMemoryVaultManager } from '../support/doubles/in-memory-vault-manager.js';
 
 describe('parseExposedTools', () => {
   it('returns null when unset, meaning register everything', () => {
@@ -67,5 +69,79 @@ describe('applyToolAllowlist', () => {
     (wrapped as unknown as { connect: () => void }).connect();
 
     expect(connect).toHaveBeenCalled();
+  });
+});
+
+const register = (wrapped: McpServer, name: string) =>
+  wrapped.registerTool(name, {} as never, (() => {}) as never);
+
+describe('applyToolAllowlist with read access', () => {
+  it('registers only read-only tools', () => {
+    const { server, registerTool } = makeServer();
+    const wrapped = applyToolAllowlist(server, undefined, 'read');
+
+    register(wrapped, 'read-note');
+    register(wrapped, 'search-vault');
+    register(wrapped, 'create-note');
+    register(wrapped, 'delete-note');
+
+    expect(registerTool.mock.calls.map(c => c[0])).toEqual(['read-note', 'search-vault']);
+  });
+
+  it('can be narrowed further by EXPOSED_TOOLS', () => {
+    const { server, registerTool } = makeServer();
+    const wrapped = applyToolAllowlist(server, 'read-note,create-note', 'read');
+
+    register(wrapped, 'read-note');
+    register(wrapped, 'search-vault');
+    register(wrapped, 'create-note');
+
+    expect(registerTool.mock.calls.map(c => c[0])).toEqual(['read-note']);
+  });
+
+  it('cannot be widened by EXPOSED_TOOLS naming a write tool', () => {
+    const { server, registerTool } = makeServer();
+    const wrapped = applyToolAllowlist(server, 'delete-note', 'read');
+
+    register(wrapped, 'delete-note');
+
+    expect(registerTool).not.toHaveBeenCalled();
+  });
+
+  it('leaves write access unfiltered', () => {
+    const { server, registerTool } = makeServer();
+    const wrapped = applyToolAllowlist(server, undefined, 'write');
+
+    register(wrapped, 'delete-note');
+
+    expect(registerTool).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('READ_ONLY_TOOLS', () => {
+  // Access is decided by the explicit list, and clients are advised by the
+  // hint. If the two drift, a client is told a tool is safe that a read token
+  // cannot call — or, worse, a writing tool is labelled read-only.
+  it('matches exactly the tools registered with readOnlyHint', () => {
+    const { server, registerTool } = makeServer();
+    registerTools(server, () => new InMemoryVaultManager());
+
+    const hinted = registerTool.mock.calls
+      .filter(([, config]) => config?.annotations?.readOnlyHint === true)
+      .map(([name]) => name)
+      .sort();
+
+    expect(hinted).toEqual([...READ_ONLY_TOOLS].sort());
+  });
+
+  it('contains no tool marked destructive', () => {
+    const { server, registerTool } = makeServer();
+    registerTools(server, () => new InMemoryVaultManager());
+
+    const destructive = registerTool.mock.calls
+      .filter(([, config]) => config?.annotations?.destructiveHint === true)
+      .map(([name]) => name);
+
+    expect(destructive.filter(name => READ_ONLY_TOOLS.has(name))).toEqual([]);
   });
 });

@@ -5,6 +5,7 @@ import * as handlers from '@/mcp/handlers';
 import type { ToolResponse } from '@/mcp/handlers';
 import { applyToolAllowlist } from '@/mcp/tool-allowlist';
 import { loadVaultConventionsConfig } from '@/services/vault-conventions';
+import type { AccessLevel } from '@/services/access';
 
 type McpToolResult = {
   content: Array<{ type: 'text'; text: string }>;
@@ -39,11 +40,15 @@ function formatToolResult(result: ToolResponse): McpToolResult {
   return response;
 }
 
-export function registerTools(rawServer: McpServer, getVaultManager: () => VaultManager): void {
+export function registerTools(
+  rawServer: McpServer,
+  getVaultManager: () => VaultManager,
+  access: AccessLevel = 'write',
+): void {
   // Every registerTool call below goes through the allowlist. Filtering here
   // rather than at each call site means a tool added later is covered by
   // default instead of being exposed until someone remembers to gate it.
-  const server = applyToolAllowlist(rawServer);
+  const server = applyToolAllowlist(rawServer, process.env.EXPOSED_TOOLS, access);
 
   server.registerTool(
     'capture-inbox',

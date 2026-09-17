@@ -57,6 +57,7 @@ export class DynamoDbAuthStore implements AuthStore {
       const session: SessionData = {
         sessionId: data.sessionId.replace(/^session:/, ''),
         authenticated: !!data.authenticated,
+        access: data.access,
         createdAt: Number(data.createdAt),
         expiresAt: Number(data.expiresAt),
         pendingAuthRequest: data.pendingAuthRequest
@@ -66,6 +67,7 @@ export class DynamoDbAuthStore implements AuthStore {
               state: data.pendingAuthRequest.state,
               codeChallenge: data.pendingAuthRequest.codeChallenge,
               codeChallengeMethod: data.pendingAuthRequest.codeChallengeMethod,
+              scope: data.pendingAuthRequest.scope,
             }
           : undefined,
       };
@@ -86,6 +88,7 @@ export class DynamoDbAuthStore implements AuthStore {
       const item: Record<string, any> = {
         sessionId: `session:${session.sessionId}`,
         authenticated: session.authenticated,
+        ...(session.access ? { access: session.access } : {}),
         createdAt: session.createdAt,
         expiresAt: session.expiresAt,
         [this.ttlAttribute]: Math.floor(session.expiresAt / 1000),
@@ -142,6 +145,7 @@ export class DynamoDbAuthStore implements AuthStore {
       redirectUri: data.redirectUri,
       createdAt: Number(data.createdAt),
       expiresAt: Number(data.expiresAt),
+      access: data.access,
     };
   }
 
@@ -154,6 +158,7 @@ export class DynamoDbAuthStore implements AuthStore {
       redirectUri: authData.redirectUri,
       createdAt: authData.createdAt,
       expiresAt: authData.expiresAt,
+      ...(authData.access ? { access: authData.access } : {}),
       [this.ttlAttribute]: Math.floor(authData.expiresAt / 1000),
     };
 

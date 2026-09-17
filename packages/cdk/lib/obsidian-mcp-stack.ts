@@ -25,7 +25,12 @@ const REQUIRED_LAMBDA_ENV_VARS = [
   'BASE_URL',
 ] as const;
 
-const OPTIONAL_LAMBDA_ENV_VARS = ['GIT_USERNAME'] as const;
+const OPTIONAL_LAMBDA_ENV_VARS = [
+  'GIT_USERNAME',
+  'PERSONAL_AUTH_TOKEN_RO',
+  'MCP_STATIC_BEARER_TOKENS',
+  'MCP_STATIC_BEARER_TOKENS_RO',
+] as const;
 
 export class ObsidianMcpStack extends cdk.Stack {
   constructor(scope: Construct, id: string, props?: cdk.StackProps) {
