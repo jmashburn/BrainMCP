@@ -1,6 +1,7 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { VaultManager } from '@/services/vault-manager';
 import { guidanceFiles } from '@/services/vault-conventions';
+import { BRAIN_PROTOCOL_URI, BRAIN_PROTOCOL_PATH, readBrainProtocol } from '@/mcp/brain-protocol';
 
 /**
  * Register MCP resources with the server
@@ -9,6 +10,33 @@ import { guidanceFiles } from '@/services/vault-conventions';
  * reference when needed, without loading the data upfront.
  */
 export function registerResources(server: McpServer, getVaultManager: () => VaultManager): void {
+  server.registerResource(
+    'brain-protocol',
+    BRAIN_PROTOCOL_URI,
+    {
+      name: 'Brain protocol',
+      description:
+        'The canonical agent protocol for this vault, authored in the vault ' +
+        `itself (${BRAIN_PROTOCOL_PATH}). How to orient, what goes where, ` +
+        'conventions, and the write-back rules. Read this first for substantive work.',
+      mimeType: 'text/markdown',
+      annotations: {
+        readOnlyHint: true,
+        openWorldHint: true,
+      },
+    },
+    async uri => {
+      const vault = getVaultManager();
+      // Deliberately let a missing protocol note throw: the SDK turns it into
+      // an MCP error, which is the honest signal. Substituting hard-coded
+      // instructions would let the vault and the served protocol drift apart.
+      const text = await readBrainProtocol(vault);
+      return {
+        contents: [{ uri: uri.href, mimeType: 'text/markdown', text }],
+      };
+    },
+  );
+
   server.registerResource(
     'vault-readme',
     'obsidian://vault-readme',

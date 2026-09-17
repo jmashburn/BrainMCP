@@ -19,6 +19,8 @@ import { logger } from '@/utils/logger';
  * hooks are writable by a remote client has no meaningful protection, and an
  * operator who never reads the docs is exactly the one who needs the default.
  */
+import { BRAIN_PROTOCOL_PATH } from '@/mcp/brain-protocol';
+
 export const DEFAULT_PROTECTED_PATHS = [
   'CLAUDE.md',
   'AGENTS.md',
@@ -26,6 +28,10 @@ export const DEFAULT_PROTECTED_PATHS = [
   '.github/**',
   '.gitignore',
   '.gitattributes',
+  // The vault-authored agent protocol: clients read it as authoritative
+  // guidance, so they must not be able to rewrite it through the server.
+  // Humans still edit it in Obsidian (that push bypasses this MCP-write guard).
+  BRAIN_PROTOCOL_PATH,
 ];
 
 export function createVaultManager(vaultPath: string): VaultManager {

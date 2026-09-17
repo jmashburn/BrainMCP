@@ -14,6 +14,8 @@ import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { createVaultManager } from '@/services/vault-factory';
 import { registerTools } from '@/mcp/tool-registrations';
 import { registerResources } from '@/mcp/resource-registrations';
+import { registerPrompts } from '@/mcp/prompt-registrations';
+import { registerOrientTool } from '@/mcp/orient-tool';
 import { loadEnv, ensureCoreEnvVars } from '@/env';
 import { MCP_SERVER_INSTRUCTIONS } from '@/server/shared/instructions';
 import { configureLogger } from '@/utils/logger';
@@ -49,6 +51,8 @@ console.error(`Vault path: ${LOCAL_VAULT_PATH}`);
 
 registerTools(mcpServer, () => vaultManager);
 registerResources(mcpServer, () => vaultManager);
+registerPrompts(mcpServer);
+registerOrientTool(mcpServer, () => vaultManager);
 
 const transport = new StdioServerTransport();
 await mcpServer.connect(transport);

@@ -1,42 +1,47 @@
 /**
  * Prompt registrations.
  *
- * One real prompt, which also makes `prompts/list` answer instead of
- * returning -32601. Some clients (ChatGPT desktop, Codex) probe prompts and
- * resources during their availability check and report a server with no
- * handler as having no tools at all.
+ * `brain-orient` points the client at the canonical protocol resource and,
+ * given an optional topic, tells it to pull relevant context before asking
+ * questions the vault may already answer. The detailed rules live in the vault
+ * (see brain://protocol), not here — this prompt stays short on purpose.
+ *
+ * Registering at least one prompt also makes `prompts/list` answer instead of
+ * returning -32601, which some clients treat as the server being unavailable.
  */
 
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
+import { BRAIN_PROTOCOL_URI } from '@/mcp/brain-protocol';
 
 export function registerPrompts(server: McpServer): void {
   server.registerPrompt(
-    'recall-context',
+    'brain-orient',
     {
-      title: 'Recall vault context',
+      title: 'Orient to the Brain',
       description:
-        'Pull relevant context for a topic from the vault before answering: read the vault guidelines, search, read the matching notes, summarize.',
-      argsSchema: { topic: z.string().describe('What the conversation is about') },
+        'Read the vault protocol and, for a given topic, pull relevant Brain ' +
+        'context before answering. Prefer the `orient` tool if this client ' +
+        'does not consume MCP prompts automatically.',
+      argsSchema: { topic: z.string().optional().describe('What the work is about (optional)') },
     },
-    ({ topic }) => ({
-      messages: [
-        {
-          role: 'user',
-          content: {
-            type: 'text',
-            text: [
-              `Recall what the vault knows about: ${topic}`,
-              '',
-              '1. Read the resource obsidian://vault-readme for how the vault is organised.',
-              '2. Use search-vault on the topic (and obvious synonyms).',
-              '3. read-note the best matches — project, system and people notes first, then recent 70-Journal entries.',
-              '4. Summarise the durable facts, open tasks and decisions, citing note names.',
-              '5. When the conversation produces something worth keeping, use log-journal-entry.',
-            ].join('\n'),
-          },
-        },
-      ],
-    }),
+    ({ topic }) => {
+      const lines = [
+        `Read the resource ${BRAIN_PROTOCOL_URI} and follow it — it is the`,
+        'canonical protocol for how this vault is organised and how to write back.',
+      ];
+      if (topic && topic.trim()) {
+        lines.push(
+          '',
+          `Then, before asking about "${topic}", retrieve what the Brain already`,
+          'knows: search for the topic and obvious synonyms, read the best',
+          'matching home notes, and summarise the durable facts, open tasks, and',
+          'decisions, citing note paths. Only ask once the vault has been checked.',
+        );
+      }
+      return {
+        messages: [{ role: 'user', content: { type: 'text', text: lines.join('\n') } }],
+      };
+    },
   );
 }

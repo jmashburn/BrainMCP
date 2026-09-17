@@ -96,7 +96,8 @@ export function registerTools(rawServer: McpServer, getVaultManager: () => Vault
     'read-note',
     {
       title: 'Read Note',
-      description: 'Read the contents of a note file',
+      description:
+        'Read the contents of a note file. For substantive Brain work, call `orient` first.',
       inputSchema: toolDefs.ReadNoteSchema.inputSchema,
       outputSchema: toolDefs.ReadNoteSchema.outputSchema,
       annotations: {
@@ -362,7 +363,7 @@ export function registerTools(rawServer: McpServer, getVaultManager: () => Vault
     {
       title: 'Search Vault',
       description:
-        'Fuzzy or exact search across vault filenames and content with relevance scoring',
+        'Fuzzy or exact search across vault filenames and content with relevance scoring. For substantive Brain work, call `orient` first; for a narrow lookup, search/read the relevant note directly.',
       inputSchema: toolDefs.SearchVaultSchema.inputSchema,
       outputSchema: toolDefs.SearchVaultSchema.outputSchema,
       annotations: {

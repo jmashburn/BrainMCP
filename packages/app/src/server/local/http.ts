@@ -17,6 +17,7 @@ import { registerTools } from '@/mcp/tool-registrations';
 import { registerResources } from '@/mcp/resource-registrations';
 import { registerPrompts } from '@/mcp/prompt-registrations';
 import { registerConnectorTools } from '@/mcp/connector-tools';
+import { registerOrientTool } from '@/mcp/orient-tool';
 import { registerOAuthRoutes } from '@/server/shared/oauth-routes';
 import { registerMcpRoute } from '@/server/shared/mcp-routes';
 import { createInMemoryAuthStore } from '@/services/auth/stores';
@@ -68,6 +69,7 @@ const createServer = (): McpServer => {
   registerResources(server, () => vaultManager);
   registerPrompts(server);
   registerConnectorTools(server, () => vaultManager);
+  registerOrientTool(server, () => vaultManager);
   return server;
 };
 const mcpServer = createServer();

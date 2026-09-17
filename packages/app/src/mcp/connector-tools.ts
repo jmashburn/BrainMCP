@@ -43,7 +43,7 @@ export function registerConnectorTools(
     {
       title: 'Search',
       description:
-        'Search the vault (filenames and content). Returns matching notes as results with an id to pass to fetch.',
+        'Search the vault (filenames and content). Returns matching notes as results with an id to pass to fetch. For substantive Brain work, call `orient` first; for a narrow lookup, search then fetch directly.',
       inputSchema: { query: z.string().describe('Search query') },
       annotations: readOnly,
     },
@@ -69,7 +69,7 @@ export function registerConnectorTools(
     'fetch',
     {
       title: 'Fetch',
-      description: 'Fetch the full contents of a note by the id returned from search (its vault path).',
+      description: 'Fetch the full contents of a note by the id returned from search (its vault path). For substantive Brain work, call `orient` first.',
       inputSchema: { id: z.string().describe('Note id (vault-relative path) from search') },
       annotations: readOnly,
     },

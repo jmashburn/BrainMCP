@@ -50,7 +50,7 @@ function stripSchemaMarker(node: unknown): void {
   }
 }
 
-function sanitizeToolsList(message: unknown): void {
+export function sanitizeToolsList(message: unknown): void {
   const result = (message as { result?: { tools?: Array<Record<string, unknown>> } })?.result;
   if (!result?.tools || !Array.isArray(result.tools)) return;
   for (const tool of result.tools) {

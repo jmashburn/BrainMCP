@@ -64,6 +64,11 @@ const FILES = {
   '10-Tasks/TASKS.md': '# Tasks\n\n## Now\n\n_(nothing yet)_\n\n## Next\n\n_(nothing yet)_\n',
   '00-Inbox/.gitkeep': '',
   '70-Journal/.gitkeep': '',
+  '90-Meta/skills/Brain/SKILL.md':
+    '---\ntype: meta\n---\n\n# Brain protocol\n\nE2E-PROTOCOL-MARKER. Search before asking.\n',
+  '50-People/Jared.md': '---\ntype: person\n---\n\n# Jared\n\nOwner. E2E-JARED-MARKER\n',
+  '20-Projects/Sleeve Project.md':
+    '---\ntype: project\n---\n\n# Sleeve Project\n\nDrafting the sleeve. E2E-SLEEVE-MARKER\n',
 };
 
 function buildFixture() {
@@ -316,6 +321,52 @@ try {
     'serves guidance from both README.md and CLAUDE.md',
     guidance.includes('Agent protocol') && guidance.includes('Organisation guidelines'),
   );
+  console.log('\n--- brain://protocol resource ---');
+  const proto = await client.readResource({ uri: 'brain://protocol' });
+  const protoText = proto.contents?.[0]?.text ?? '';
+  check('brain://protocol serves the live SKILL.md', protoText.includes('E2E-PROTOCOL-MARKER'));
+
+  {
+    const { resources } = await client.listResources();
+    check(
+      'resources/list includes brain://protocol',
+      resources.some(r => r.uri === 'brain://protocol'),
+    );
+  }
+
+  console.log('\n--- brain-orient prompt ---');
+  {
+    const { prompts } = await client.listPrompts();
+    check(
+      'prompts/list includes brain-orient',
+      prompts.some(p => p.name === 'brain-orient'),
+    );
+    const got = await client.getPrompt({ name: 'brain-orient', arguments: { topic: 'sleeve' } });
+    const text = got.messages?.[0]?.content?.text ?? '';
+    check('brain-orient points at brain://protocol', text.includes('brain://protocol'));
+  }
+
+  console.log('\n--- orient tool ---');
+  {
+    const { tools } = await client.listTools();
+    check(
+      'tools/list includes orient',
+      tools.some(t => t.name === 'orient'),
+    );
+    const orientSchema = JSON.stringify(tools.find(t => t.name === 'orient')?.inputSchema ?? {});
+    check(
+      'orient advertises topic + mode',
+      orientSchema.includes('topic') && orientSchema.includes('mode'),
+    );
+  }
+  {
+    const q = await call('orient', { topic: 'sleeve', mode: 'quick' });
+    check('orient quick returns the protocol', q.text.includes('E2E-PROTOCOL-MARKER'));
+    check('orient quick returns the topic note', q.text.includes('E2E-SLEEVE-MARKER'));
+    check('orient quick omits full orientation', !q.text.includes('E2E-JARED-MARKER'));
+    const sub = await call('orient', { topic: 'sleeve', mode: 'substantive' });
+    check('orient substantive adds Jared', sub.text.includes('E2E-JARED-MARKER'));
+  }
 } finally {
   await client.close();
   if (KEEP) console.log(`\nfixture kept at ${E2E}`);

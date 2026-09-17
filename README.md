@@ -24,7 +24,7 @@ A Model Context Protocol (MCP) server for git-backed Obsidian vaults. Access and
 
 ## Overview
 
-This MCP server provides **20 tools** and **1 resource** to interact with your Obsidian vault through LLMs:
+This MCP server provides tools, prompts, and resources to interact with your Obsidian vault through LLMs. The vault can also teach clients how to use it — see [Brain orientation](docs/BRAIN-ORIENTATION.md) for the `brain://protocol` resource, the `brain-orient` prompt, and the `orient` tool:
 
 Tool Categories:
 

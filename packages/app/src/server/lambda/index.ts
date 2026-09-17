@@ -11,6 +11,8 @@ import { createVaultManager } from '@/services/vault-factory';
 import { detectStartType, getInvocationCount, cleanupOldCache } from './cache.js';
 import { registerTools } from '@/mcp/tool-registrations';
 import { registerResources } from '@/mcp/resource-registrations';
+import { registerPrompts } from '@/mcp/prompt-registrations';
+import { registerOrientTool } from '@/mcp/orient-tool';
 import { registerOAuthRoutes } from '@/server/shared/oauth-routes';
 import { registerMcpRoute } from '@/server/shared/mcp-routes';
 import { createDynamoDbAuthStore } from '@/services/auth/stores';
@@ -63,6 +65,8 @@ const mcpServer = new McpServer({
 
 registerTools(mcpServer, getVaultManager);
 registerResources(mcpServer, getVaultManager);
+registerPrompts(mcpServer);
+registerOrientTool(mcpServer, getVaultManager);
 
 const OAUTH_CLIENT_ID = process.env.OAUTH_CLIENT_ID || 'obsidian-mcp-client';
 const OAUTH_CLIENT_SECRET = process.env.OAUTH_CLIENT_SECRET;

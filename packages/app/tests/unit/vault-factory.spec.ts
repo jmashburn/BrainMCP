@@ -2,6 +2,7 @@ import { describe, it, expect, afterEach } from 'vitest';
 import { guidanceFiles } from '@/services/vault-conventions';
 import { DEFAULT_PROTECTED_PATHS } from '@/services/vault-factory';
 import { isProtected } from '@/services/path-guard';
+import { BRAIN_PROTOCOL_PATH } from '@/mcp/brain-protocol';
 
 const ORIGINAL = process.env.VAULT_GUIDANCE_FILES;
 
@@ -54,5 +55,12 @@ describe('guidance files are protected from writes', () => {
 
     expect(isProtected('00-Inbox/Idea.md', paths)).toBe(false);
     expect(isProtected('70-Journal/2026-07-28.md', paths)).toBe(false);
+  });
+});
+
+describe('Brain protocol path protection', () => {
+  it('protects the vault-authored protocol note from client writes by default', () => {
+    expect(DEFAULT_PROTECTED_PATHS).toContain(BRAIN_PROTOCOL_PATH);
+    expect(isProtected(BRAIN_PROTOCOL_PATH, DEFAULT_PROTECTED_PATHS)).toBe(true);
   });
 });
