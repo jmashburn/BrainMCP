@@ -153,7 +153,7 @@ Add to your Cursor MCP settings:
 1. Pull the image:
 
 ```bash
-docker pull ghcr.io/eddmann/obsidian-mcp:latest
+docker pull ghcr.io/jmashburn/brainmcp:latest
 ```
 
 2. Configure environment:
@@ -168,7 +168,7 @@ cp .env.example obsidian-mcp.env
 ```bash
 docker run -i --rm \
   -v "/ABSOLUTE/PATH/TO/obsidian-mcp.env:/app/.env" \
-  ghcr.io/eddmann/obsidian-mcp:latest \
+  ghcr.io/jmashburn/brainmcp:latest \
   stdio
 ```
 
@@ -189,7 +189,7 @@ docker run -i --rm \
         "--rm",
         "-v",
         "/ABSOLUTE/PATH/TO/obsidian-mcp.env:/app/.env",
-        "ghcr.io/eddmann/obsidian-mcp:latest",
+        "ghcr.io/jmashburn/brainmcp:latest",
         "stdio"
       ]
     }
@@ -210,7 +210,7 @@ Windows:
         "--rm",
         "-v",
         "C:\\ABSOLUTE\\PATH\\TO\\obsidian-mcp.env:/app/.env",
-        "ghcr.io/eddmann/obsidian-mcp:latest",
+        "ghcr.io/jmashburn/brainmcp:latest",
         "stdio"
       ]
     }
@@ -250,7 +250,7 @@ Using Docker:
 ```bash
 docker run -p 3000:3000 --rm \
   -v "/ABSOLUTE/PATH/TO/obsidian-mcp.env:/app/.env" \
-  ghcr.io/eddmann/obsidian-mcp:latest \
+  ghcr.io/jmashburn/brainmcp:latest \
   http
 ```
 

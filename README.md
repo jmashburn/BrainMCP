@@ -1,8 +1,10 @@
-# Obsidian MCP Server
+# BrainMCP
 
 ![Obsidian MCP Server](docs/heading.png)
 
 A Model Context Protocol (MCP) server for git-backed Obsidian vaults. Access and manage your notes through Claude, ChatGPT, and other LLMs by syncing changes via git.
+
+> Originally based on [eddmann/obsidian-mcp](https://github.com/eddmann/obsidian-mcp) (MIT). BrainMCP is maintained independently and adds the vault guards, vault conventions, and vault-taught orientation described below.
 
 ## Table of Contents
 
@@ -47,7 +49,7 @@ Get started with Claude Desktop in 3 steps using Docker:
 
 ```bash
 # 1. Download the example environment file
-curl -O https://raw.githubusercontent.com/eddmann/obsidian-mcp/main/.env.example
+curl -O https://raw.githubusercontent.com/jmashburn/BrainMCP/main/.env.example
 mv .env.example obsidian-mcp.env
 
 # 2. Edit obsidian-mcp.env with your vault repo and git token
@@ -73,7 +75,7 @@ mv .env.example obsidian-mcp.env
         "--rm",
         "-v",
         "/ABSOLUTE/PATH/TO/obsidian-mcp.env:/app/.env",
-        "ghcr.io/eddmann/obsidian-mcp:latest",
+        "ghcr.io/jmashburn/brainmcp:latest",
         "stdio"
       ]
     }
@@ -97,7 +99,7 @@ mv .env.example obsidian-mcp.env
         "--rm",
         "-v",
         "C:\\ABSOLUTE\\PATH\\TO\\obsidian-mcp.env:/app/.env",
-        "ghcr.io/eddmann/obsidian-mcp:latest",
+        "ghcr.io/jmashburn/brainmcp:latest",
         "stdio"
       ]
     }
@@ -114,8 +116,8 @@ Restart Claude Desktop and start chatting with your vault!
 
 ```bash
 # 1. Clone and install
-git clone https://github.com/eddmann/obsidian-mcp
-cd obsidian-mcp
+git clone https://github.com/jmashburn/BrainMCP
+cd BrainMCP
 npm install
 
 # 2. Configure credentials
@@ -362,8 +364,8 @@ See [Quick Start](#quick-start) above for the recommended Docker-based setup.
 
 ```bash
 # Clone and install
-git clone https://github.com/eddmann/obsidian-mcp
-cd obsidian-mcp
+git clone https://github.com/jmashburn/BrainMCP
+cd BrainMCP
 npm install
 
 # Configure credentials
@@ -410,7 +412,7 @@ Using Docker:
 ```bash
 docker run -p 3000:3000 --rm \
   -v "/ABSOLUTE/PATH/TO/obsidian-mcp.env:/app/.env" \
-  ghcr.io/eddmann/obsidian-mcp:latest \
+  ghcr.io/jmashburn/brainmcp:latest \
   http
 ```
 
@@ -418,8 +420,8 @@ Using npm:
 
 ```bash
 # First clone the repo if you haven't already
-git clone https://github.com/eddmann/obsidian-mcp
-cd obsidian-mcp
+git clone https://github.com/jmashburn/BrainMCP
+cd BrainMCP
 npm install
 
 # Configure all environment variables (including OAuth)
@@ -443,8 +445,8 @@ Deploy to AWS Lambda for remote access with DynamoDB session storage:
 
 ```bash
 # 1. Clone the repository
-git clone https://github.com/eddmann/obsidian-mcp
-cd obsidian-mcp
+git clone https://github.com/jmashburn/BrainMCP
+cd BrainMCP
 
 # 2. Install dependencies
 npm install
@@ -626,10 +628,10 @@ If your vault contains a README.md file in its root directory, LLMs can access i
 
 ## Documentation
 
-- [Tool Reference](docs/TOOLS.md) - Detailed documentation for all 18 tools with usage examples
+- [Tool Reference](docs/TOOLS.md) - Detailed documentation for the tools with usage examples
 - [Deployment Guide](docs/DEPLOYMENT.md) - Complete deployment instructions for all modes
 - [Git Providers](docs/GIT_PROVIDERS.md) - Setup instructions for GitHub, GitLab, Bitbucket, and self-hosted providers
 
 ## License
 
-[MIT](LICENSE)
+[MIT](LICENSE). Portions copyright (c) 2025 eddmann, from the original [obsidian-mcp](https://github.com/eddmann/obsidian-mcp).

@@ -10,15 +10,15 @@
     "lambda",
     "aws"
   ],
-  "author": "eddmann",
+  "author": "Jared Mashburn",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/eddmann/obsidian-mcp.git"
+    "url": "https://github.com/jmashburn/BrainMCP.git"
   },
-  "homepage": "https://github.com/eddmann/obsidian-mcp#readme",
+  "homepage": "https://github.com/jmashburn/BrainMCP#readme",
   "bugs": {
-    "url": "https://github.com/eddmann/obsidian-mcp/issues"
+    "url": "https://github.com/jmashburn/BrainMCP/issues"
   },
   "engines": {
     "node": ">=22.0.0",
