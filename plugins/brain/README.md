@@ -3,7 +3,8 @@
 Registers a [BrainMCP](../../README.md) server with Claude Code in one step,
 instead of adding it by hand on every machine.
 
-The plugin contains no server and no credentials. It is a pointer: you tell it
+The plugin contains no server and no credentials. It is a pointer (the server
+entry lives in `.claude-plugin/plugin.json` under `mcpServers`): you tell it
 where your server is, and Claude Code signs in to it through the server's own
 OAuth login the first time the tools are used.
 

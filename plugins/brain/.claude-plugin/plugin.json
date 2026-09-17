@@ -17,5 +17,11 @@
       "description": "The server's MCP endpoint, ending in /mcp (for example https://brain.example.com/mcp). Give the endpoint, not the site root.",
       "required": true
     }
+  },
+  "mcpServers": {
+    "brain": {
+      "type": "http",
+      "url": "${user_config.url}"
+    }
   }
 }
