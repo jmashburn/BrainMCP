@@ -39,7 +39,9 @@ function buildAuthenticatedUrl(
         break;
 
       case 'gitlab':
-        url.username = 'oauth2';
+        // Personal and project access tokens authenticate as `oauth2`. A deploy
+        // token only works with its own username, so GIT_USERNAME wins when set.
+        url.username = username || 'oauth2';
         url.password = token;
         break;
 

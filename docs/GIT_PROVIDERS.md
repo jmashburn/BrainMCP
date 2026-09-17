@@ -188,7 +188,9 @@ https://oauth2:TOKEN@gitlab.com/username/repository.git
 ```bash
 VAULT_REPO=https://gitlab.mycompany.com/team/vault.git
 GIT_TOKEN=glpat-xyz123
-# No GIT_USERNAME needed - auto-detected as GitLab
+# No GIT_USERNAME needed - auto-detected as GitLab (access tokens authenticate as oauth2)
+# Using a deploy token instead? It only works with its own username:
+# GIT_USERNAME=gitlab+deploy-token-42
 ```
 
 ---

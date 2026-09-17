@@ -34,9 +34,11 @@ vault:
   protectedPaths: ''
 
 git:
-  # Only needed when the host is not github.com / bitbucket.org and does not
-  # contain "gitlab" — the server then uses basic auth as <username>:<token>.
-  # For a GitLab personal/project access token use "oauth2".
+  # Required when the host is not github.com / bitbucket.org and does not
+  # contain "gitlab" — the server then uses basic auth as <username>:<token>;
+  # for a GitLab personal/project access token on such a host use "oauth2".
+  # On a host that does contain "gitlab" it defaults to "oauth2"; set it to a
+  # deploy token's own username to use a deploy token.
   username: ''
   # The server commits as "Obsidian MCP Server <mcp@obsidian.local>". Set these
   # when the remote enforces verified authors; they become GIT_AUTHOR_* and
@@ -70,7 +72,10 @@ server:
 conventions:
   templatesDir: 90-Meta/templates
   inboxDir: 00-Inbox
-  inboxTemplate: reference.md
+  # Template for capture-inbox, relative to templatesDir. Leave empty for a
+  # generated note (title + body). A template needs a {{body}} slot to place
+  # the captured text; without one the body is appended after it.
+  inboxTemplate: ''
   tasksPath: 10-Tasks/TASKS.md
   tasksDefaultSection: '## Now'
   journal:
@@ -123,6 +128,11 @@ route:
   enabled: false
   host: ''
   annotations: {}
+  # Extra labels on the Route. Clusters that shard ingress by label need this:
+  # without the shard's label the default router admits the Route and serves it
+  # on its own domain while server.baseUrl names another, and OAuth then fails
+  # with nothing reporting an error. For example: { shard: internal }
+  labels: {}
   tls:
     enabled: true
     termination: edge

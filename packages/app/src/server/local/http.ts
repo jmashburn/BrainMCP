@@ -30,6 +30,7 @@ import {
 } from '@/server/shared/instructions';
 import { type AccessLevel, describeAccessConfig } from '@/services/access';
 import { readOnlyVaultManager } from '@/services/read-only-vault';
+import { startupBanner } from './startup-banner';
 import { configureLogger } from '@/utils/logger';
 
 loadEnv();
@@ -135,32 +136,7 @@ app.use((req, res) => {
 const PORT = parseInt(process.env.PORT || '3000');
 
 app.listen(PORT, () => {
-  console.log(`
-╔═══════════════════════════════════════════════════════════╗
-║  Obsidian MCP Server (OAuth 2.0 Protected)               ║
-╠═══════════════════════════════════════════════════════════╣
-║  Server:     ${BASE_URL.padEnd(49)}║
-║  Vault:      ${LOCAL_VAULT_PATH.padEnd(49)}║
-║  Client ID:  ${OAUTH_CLIENT_ID.padEnd(49)}║
-╚═══════════════════════════════════════════════════════════╝
-
-OAuth 2.0 Endpoints:
-  Authorization: ${BASE_URL}/oauth/authorize
-  Token:         ${BASE_URL}/oauth/token
-  Register:      ${BASE_URL}/oauth/register
-  Revoke:        ${BASE_URL}/oauth/revoke
-  Discovery:     ${BASE_URL}/.well-known/oauth-authorization-server
-
-MCP Endpoint (requires Bearer token):
-  POST ${BASE_URL}/mcp
-
-Health Check:
-  GET ${BASE_URL}/health
-
-Configure ChatGPT/Claude with:
-  - Client ID: ${OAUTH_CLIENT_ID}
-  - Client Secret: ${OAUTH_CLIENT_SECRET}
-  - Authorization URL: ${BASE_URL}/oauth/authorize
-  - Token URL: ${BASE_URL}/oauth/token
-  `);
+  console.log(
+    startupBanner({ baseUrl: BASE_URL, vaultPath: LOCAL_VAULT_PATH, clientId: OAUTH_CLIENT_ID }),
+  );
 });

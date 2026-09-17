@@ -14,6 +14,7 @@ import {
   ensureFrontmatter,
   formatISODate,
   renderTemplate,
+  templateHasSlot,
   toNoteFilename,
 } from '@/services/note-conventions';
 
@@ -50,6 +51,24 @@ async function readTemplate(
 }
 
 /**
+ * Render a capture through the vault's template without ever losing the body.
+ *
+ * A template written for a person to fill in by hand has headings and no
+ * `{{body}}` slot. Rendering it would substitute the title and quietly drop
+ * the captured text while reporting success — on the one tool whose whole job
+ * is not losing the thought. When there is no slot, the body goes after the
+ * template instead.
+ */
+function renderCapture(
+  template: string,
+  vars: { date: string; title: string; body: string },
+): string {
+  const rendered = renderTemplate(template, vars);
+  if (templateHasSlot(template, 'body')) return rendered;
+  return `${rendered.trimEnd()}\n\n${vars.body}\n`;
+}
+
+/**
  * Capture a note into the inbox, built from the vault's own template.
  */
 export async function handleCaptureInbox(
@@ -73,7 +92,7 @@ export async function handleCaptureInbox(
     const template = await readTemplate(vault, config, config.inboxTemplate);
 
     const base = template
-      ? renderTemplate(template, { date, title: args.title, body: args.body })
+      ? renderCapture(template, { date, title: args.title, body: args.body })
       : `# ${args.title}\n\n${args.body}\n`;
 
     // A template may already carry frontmatter; ensureFrontmatter fills only

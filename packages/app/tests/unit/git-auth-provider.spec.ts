@@ -156,8 +156,19 @@ describe('git-auth-provider', () => {
       expect(url).toBe('https://x-access-token:token@github.com/user/repo.git');
     });
 
-    it('handles username parameter for GitLab (ignored)', () => {
-      const url = getAuthenticatedGitUrl('https://gitlab.com/user/repo.git', 'token', 'john');
+    // GitLab names deploy tokens `gitlab+deploy-token-<n>`. `+` is legal in the
+    // userinfo part of a URL and must stay literal: that is the username git sends.
+    it('uses the given username for GitLab, so a deploy token can authenticate', () => {
+      const url = getAuthenticatedGitUrl(
+        'https://gitlab.com/user/repo.git',
+        'token',
+        'gitlab+deploy-token-42',
+      );
+      expect(url).toBe('https://gitlab+deploy-token-42:token@gitlab.com/user/repo.git');
+    });
+
+    it('falls back to oauth2 for GitLab when no username is given', () => {
+      const url = getAuthenticatedGitUrl('https://gitlab.com/user/repo.git', 'token');
       expect(url).toBe('https://oauth2:token@gitlab.com/user/repo.git');
     });
 
