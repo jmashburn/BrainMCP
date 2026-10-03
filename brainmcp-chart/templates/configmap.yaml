@@ -16,6 +16,7 @@ data:
   {{- with .Values.vault.protectedPaths }}
   VAULT_PROTECTED_PATHS: {{ . | quote }}
   {{- end }}
+  VAULT_SYNC_INTERVAL_SECONDS: {{ .Values.vault.syncIntervalSeconds | quote }}
   {{- with .Values.git.username }}
   GIT_USERNAME: {{ . | quote }}
   {{- end }}

@@ -98,6 +98,10 @@ GIT_USERNAME=your_username
 LOCAL_VAULT_PATH=./vault-local
 PORT=3000
 
+# Vault sync: reads fetch from the remote at most this often (seconds);
+# writes always fetch first. 0 = fetch on every call.
+VAULT_SYNC_INTERVAL_SECONDS=30
+
 # Session Management
 SESSION_EXPIRY_MS=86400000  # 24 hours
 

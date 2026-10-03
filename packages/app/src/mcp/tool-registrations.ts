@@ -14,8 +14,12 @@ type McpToolResult = {
 };
 
 function formatToolResult(result: ToolResponse): McpToolResult {
+  // Every tool here declares an outputSchema, so structuredContent is required
+  // and the spec asks for the same JSON as text for clients that only read
+  // text. Both copies land in the caller's context; compact JSON keeps that
+  // from doubling with indentation on large results.
   const contentText = result.success
-    ? JSON.stringify(result.data ?? {}, null, 2)
+    ? JSON.stringify(result.data ?? {})
     : (result.error ?? 'Unknown error');
 
   const response: McpToolResult = {

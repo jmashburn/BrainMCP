@@ -400,7 +400,8 @@ graph LR
 
 Workflow:
 
-1. Server clones/pulls your vault from git
+1. Server clones your vault from git, then fetches before writes and at most
+   every `VAULT_SYNC_INTERVAL_SECONDS` (default 30) for reads
 2. LLM makes changes through MCP tools
 3. Server automatically commits and pushes changes
 4. Your Obsidian clients pull to stay synchronized
@@ -652,9 +653,9 @@ See [Tool Documentation](docs/TOOLS.md#directory-operations) for detailed usage 
 <details>
 <summary>View search tool</summary>
 
-| Tool           | Description                                                                                                              |
-| -------------- | ------------------------------------------------------------------------------------------------------------------------ |
-| `search-vault` | Search vault filenames and content using fuzzy matching (powered by fuse.js) or exact string matching with context lines |
+| Tool           | Description                                                                                                       |
+| -------------- | ----------------------------------------------------------------------------------------------------------------- |
+| `search-vault` | Search vault filenames and content using typo-tolerant word matching or exact string matching, best matches first |
 
 See [Tool Documentation](docs/TOOLS.md#search) for detailed usage and examples.
 

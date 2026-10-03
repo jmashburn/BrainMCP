@@ -1,4 +1,10 @@
 import { z } from 'zod';
+import {
+  DEFAULT_SEARCH_LIMIT,
+  MAX_CONTEXT_LINES,
+  MAX_LINE_LENGTH,
+  MAX_LINES_PER_FILE,
+} from '@/mcp/handlers/search-handlers';
 
 export const ReadNoteSchema = {
   inputSchema: {
@@ -214,7 +220,17 @@ export const SearchVaultSchema = {
       .array(z.string())
       .optional()
       .describe('Filter by file extensions (default: ["md"])'),
-    limit: z.number().optional().describe('Maximum number of results (default: 50)'),
+    limit: z
+      .number()
+      .optional()
+      .describe(`Maximum number of results (default: ${DEFAULT_SEARCH_LIMIT})`),
+    context_lines: z
+      .number()
+      .int()
+      .min(0)
+      .max(MAX_CONTEXT_LINES)
+      .optional()
+      .describe(`Lines of context around each matching line, 0-${MAX_CONTEXT_LINES} (default: 0)`),
   },
   outputSchema: {
     results: z.array(
@@ -236,11 +252,15 @@ export const SearchVaultSchema = {
             }),
           )
           .optional()
-          .describe('Line matches (only present for content matches)'),
+          .describe(
+            `Up to ${MAX_LINES_PER_FILE} of the best matching lines, each cut to ${MAX_LINE_LENGTH} characters (only present for content matches)`,
+          ),
       }),
     ),
-    total_matches: z.number(),
-    total_files: z.number(),
+    total_matches: z
+      .number()
+      .describe('Results found before applying limit; above total_files means more exist'),
+    total_files: z.number().describe('Results returned'),
   },
 };
 

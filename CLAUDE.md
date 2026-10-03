@@ -114,12 +114,12 @@ npm run cdk:destroy
 
 All write operations automatically commit and push to git:
 
-1. `initialize()` - Clones vault (if not exists) or syncs with remote (fetch + reset --hard to match remote exactly)
+1. Sync - Clones vault (if not exists) or syncs with remote (fetch + reset --hard to match remote exactly). Writes always sync first; reads sync at most once per `VAULT_SYNC_INTERVAL_SECONDS` (default 30, 0 = every call), and concurrent reads share one in-flight sync
 2. Write operation executes
 3. `commitAndPush()` - Stages affected files, commits with descriptive message, pushes with exponential backoff retry (max 3 attempts)
 4. Obsidian clients pull changes to sync
 
-Note: The vault is synced on every invocation to ensure consistency with the remote repository.
+Note: a fetch that fails (network, timeout, auth) keeps the existing clone: reads serve it until the next interval, writes are refused. Only a broken local repository is deleted and re-cloned. All git work that touches the working tree (syncs, commit + push) is serialized in one queue.
 
 ### OAuth Architecture
 
@@ -179,6 +179,7 @@ Optional:
 
 - `GIT_USERNAME` - Username for self-hosted git providers (required for generic providers)
 - `LOCAL_VAULT_PATH` - Local vault directory (default: `./vault-local`)
+- `VAULT_SYNC_INTERVAL_SECONDS` - How long reads serve the clone before fetching again (default: `30`; `0` = every call). Writes always fetch first
 - `PORT` - HTTP server port (default: `3000`)
 - `SESSION_EXPIRY_MS` - Session lifetime (default: `86400000` = 24 hours)
 - `AWS_REGION` - AWS region (default: `us-east-1`)
@@ -191,7 +192,7 @@ The server provides 18 tools organized into 5 categories:
 
 **Directory Operations (3 tools)**: create-directory, list-files-in-vault, list-files-in-dir
 
-**Search (1 tool)**: search-vault (fuzzy search with fuse.js, optional exact matching, relevance scoring, context lines, file type filtering)
+**Search (1 tool)**: search-vault (typo-tolerant word matching, optional exact matching, ranked by relevance, capped output, opt-in context lines, file type filtering)
 
 **Tag Management (4 tools)**: add-tags, remove-tags, rename-tag, manage-tags
 
