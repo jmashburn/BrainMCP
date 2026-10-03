@@ -18,7 +18,7 @@ interface SearchResult {
   matches?: LineMatch[];
 }
 
-/** Rates how well a line or filename matches the query; null means no match. */
+/** Rates how well a line or filename matches an exact query; null means no match. */
 type Matcher = (text: string) => Relevance | null;
 
 // Output caps. A broad query used to return every matching line of every note
@@ -36,11 +36,35 @@ const READ_BATCH_SIZE = 10;
 // two in 9+. Whole words are compared, so "today" does not match "someday".
 const FUZZY_MAX_EDIT_RATIO = 0.25;
 
-// Fuzzy match quality doubles as relevance: the whole query appears verbatim,
-// every query word appears verbatim, or some word only matched fuzzily.
-const PHRASE_MATCH: Relevance = 1;
-const ALL_TOKENS_MATCH: Relevance = 2;
-const FUZZY_TOKEN_MATCH: Relevance = 3;
+// How many of the query's words a note must contain. Queries of one or two
+// words are deliberate, so every word must be there — dropping one would turn
+// a two-word query into a much broader one-word search. Longer queries are
+// usually natural language padded with words the note may not use ("Grace
+// site changes today"), so half the words are enough to match and ranking
+// puts notes with fuller coverage first.
+const ALL_WORDS_REQUIRED_UP_TO = 2;
+const MIN_COVERAGE_RATIO = 0.5;
+
+// Too common to say anything about a note. Dropped from coverage unless the
+// query is nothing but these, in which case they are all there is to match.
+const STOP_WORDS = new Set([
+  'the',
+  'a',
+  'an',
+  'of',
+  'to',
+  'in',
+  'on',
+  'and',
+  'or',
+  'for',
+  'is',
+  'are',
+  'what',
+  'how',
+  'about',
+  'with',
+]);
 
 export async function handleSearchVault(
   vault: VaultManager,
@@ -72,9 +96,10 @@ export async function handleSearchVault(
       filesToSearch = allFiles.filter(f => pathRegex.test(f));
     }
 
-    const matcher = isExact ? exactMatcher(args.query) : fuzzyMatcher(args.query);
-    const found = await searchFiles(vault, filesToSearch, matcher, isExact, contextLines);
-    const results = rankResults(found).slice(0, limit);
+    const found = isExact
+      ? await exactSearch(vault, filesToSearch, args.query, contextLines)
+      : await fuzzySearch(vault, filesToSearch, args.query, contextLines);
+    const results = found.slice(0, limit);
 
     return {
       success: true,
@@ -94,36 +119,25 @@ export async function handleSearchVault(
   }
 }
 
-async function searchFiles(
+/**
+ * Read every file (in batches) and collect what `evaluate` makes of each.
+ * Every file is read before ranking, so the best matches win rather than
+ * whichever files happen to come first.
+ */
+async function evaluateFiles<T>(
   vault: VaultManager,
   files: string[],
-  matcher: Matcher,
-  isExact: boolean,
-  contextLines: number,
-): Promise<SearchResult[]> {
-  const results: SearchResult[] = [];
+  evaluate: (path: string, content: string) => T | null,
+): Promise<T[]> {
+  const results: T[] = [];
 
-  for (const path of files) {
-    const relevance = matcher(path.split('/').pop() || path);
-    if (relevance !== null) {
-      results.push({
-        path,
-        match_type: 'filename',
-        relevance_score: isExact ? 1 : relevance, // exact filename hits always score 1
-      });
-    }
-  }
-
-  // Every file is read before ranking, so the best matches win rather than
-  // whichever files happen to come first.
   for (let i = 0; i < files.length; i += READ_BATCH_SIZE) {
     const batch = files.slice(i, i + READ_BATCH_SIZE);
 
     const batchResults = await Promise.all(
       batch.map(async path => {
         try {
-          const lines = (await vault.readFile(path)).split('\n');
-          return contentResult(path, lines, matcher, contextLines);
+          return evaluate(path, await vault.readFile(path));
         } catch (error) {
           logger.warn(`Error reading file during search`, { path, error });
           return null;
@@ -132,14 +146,55 @@ async function searchFiles(
     );
 
     for (const result of batchResults) {
-      if (result) results.push(result);
+      if (result !== null) results.push(result);
     }
   }
 
   return results;
 }
 
-function contentResult(
+function filenameOf(path: string): string {
+  return path.split('/').pop() || path;
+}
+
+function toLineMatch(lines: string[], index: number, contextLines: number): LineMatch {
+  return {
+    line: index + 1, // 1-based line numbers
+    content: truncateLine(lines[index]),
+    context_before: lines.slice(Math.max(0, index - contextLines), index).map(truncateLine),
+    context_after: lines.slice(index + 1, index + 1 + contextLines).map(truncateLine),
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Exact mode: the query is one literal substring, matched line by line.
+// ---------------------------------------------------------------------------
+
+async function exactSearch(
+  vault: VaultManager,
+  files: string[],
+  query: string,
+  contextLines: number,
+): Promise<SearchResult[]> {
+  const matcher = exactMatcher(query);
+  const results: SearchResult[] = [];
+
+  for (const path of files) {
+    if (matcher(filenameOf(path)) !== null) {
+      results.push({ path, match_type: 'filename', relevance_score: 1 });
+    }
+  }
+
+  results.push(
+    ...(await evaluateFiles(vault, files, (path, content) =>
+      exactContentResult(path, content.split('\n'), matcher, contextLines),
+    )),
+  );
+
+  return rankExactResults(results);
+}
+
+function exactContentResult(
   path: string,
   lines: string[],
   matcher: Matcher,
@@ -163,17 +218,12 @@ function contentResult(
     path,
     match_type: 'content',
     relevance_score: Math.min(...hits.map(h => h.relevance)) as Relevance,
-    matches: shown.map(({ index }) => ({
-      line: index + 1, // 1-based line numbers
-      content: truncateLine(lines[index]),
-      context_before: lines.slice(Math.max(0, index - contextLines), index).map(truncateLine),
-      context_after: lines.slice(index + 1, index + 1 + contextLines).map(truncateLine),
-    })),
+    matches: shown.map(({ index }) => toLineMatch(lines, index, contextLines)),
   };
 }
 
 /** Best first; a filename hit outranks a content hit with the same score. */
-function rankResults(results: SearchResult[]): SearchResult[] {
+function rankExactResults(results: SearchResult[]): SearchResult[] {
   const typeOrder = (r: SearchResult) => (r.match_type === 'filename' ? 0 : 1);
   // Array.prototype.sort is stable, so ties keep vault order.
   return [...results].sort(
@@ -193,13 +243,161 @@ function exactMatcher(query: string): Matcher {
   };
 }
 
+// ---------------------------------------------------------------------------
+// Fuzzy mode: a note is scored as a whole (filename + content) by how many of
+// the query's words it contains, wherever they appear.
+// ---------------------------------------------------------------------------
+
+interface ParsedQuery {
+  /** The whole query, lowercased and whitespace-normalised. */
+  phrase: string;
+  /** Distinct words that count toward coverage. */
+  words: string[];
+  /** How many of `words` a note must contain to match. */
+  required: number;
+}
+
+type WordHit = 'verbatim' | 'fuzzy' | null;
+
+interface RankedResult {
+  result: SearchResult;
+  isPhrase: boolean;
+  matched: number;
+  fuzzy: number;
+}
+
+function parseQuery(query: string): ParsedQuery {
+  const phrase = query.toLowerCase().trim().split(/\s+/).join(' ');
+  const all = Array.from(new Set(phrase.split(' ').filter(w => w.length > 0)));
+  const meaningful = all.filter(w => !STOP_WORDS.has(w));
+  const words = meaningful.length > 0 ? meaningful : all;
+  const required =
+    words.length <= ALL_WORDS_REQUIRED_UP_TO
+      ? words.length
+      : Math.ceil(words.length * MIN_COVERAGE_RATIO);
+  return { phrase, words, required };
+}
+
+async function fuzzySearch(
+  vault: VaultManager,
+  files: string[],
+  query: string,
+  contextLines: number,
+): Promise<SearchResult[]> {
+  const parsed = parseQuery(query);
+  if (parsed.words.length === 0) return [];
+
+  const findWord = wordFinder();
+  const ranked = await evaluateFiles(vault, files, (path, content) =>
+    fuzzyFileResult(path, content, parsed, findWord, contextLines),
+  );
+
+  // Phrase first, then more query words, then fewer fuzzy-only words, then
+  // filename over content. Sort is stable, so ties keep vault order.
+  const typeOrder = (r: RankedResult) => (r.result.match_type === 'filename' ? 0 : 1);
+  return ranked
+    .sort(
+      (a, b) =>
+        Number(b.isPhrase) - Number(a.isPhrase) ||
+        b.matched - a.matched ||
+        a.fuzzy - b.fuzzy ||
+        typeOrder(a) - typeOrder(b),
+    )
+    .map(r => r.result);
+}
+
+function fuzzyFileResult(
+  path: string,
+  content: string,
+  query: ParsedQuery,
+  findWord: WordFinder,
+  contextLines: number,
+): RankedResult | null {
+  const filenameLower = filenameOf(path).toLowerCase();
+  const contentLower = content.toLowerCase();
+  const isPhrase = filenameLower.includes(query.phrase) || contentLower.includes(query.phrase);
+
+  const filenameHits = query.words.map(word => findWord(word, filenameLower));
+  const contentHits = query.words.map(word => findWord(word, contentLower));
+  const hits = query.words.map((_, i) => strongerHit(filenameHits[i], contentHits[i]));
+
+  const matched = hits.filter(h => h !== null).length;
+  if (!isPhrase && matched < query.required) return null;
+
+  const fuzzy = hits.filter(h => h === 'fuzzy').length;
+  const filenameMatched = filenameHits.filter(h => h !== null).length;
+  const isFilenameMatch = filenameLower.includes(query.phrase) || filenameMatched >= query.required;
+
+  // Only words found somewhere in the content can pick out lines.
+  const lineWords = query.words.filter((_, i) => contentHits[i] !== null);
+  const lines = content.split('\n');
+  const matches = bestLines(lines, lineWords, query.phrase, findWord).map(index =>
+    toLineMatch(lines, index, contextLines),
+  );
+
+  return {
+    result: {
+      path,
+      match_type: isFilenameMatch ? 'filename' : 'content',
+      relevance_score: fuzzyRelevance(isPhrase, matched, fuzzy, query.words.length),
+      ...(matches.length > 0 ? { matches } : {}),
+    },
+    isPhrase,
+    matched,
+    fuzzy,
+  };
+}
+
 /**
- * Every query word must match a word in the text, in any order: verbatim as a
- * substring, or failing that by a small edit distance against a whole word.
+ * Public relevance stays 1-4, lower is better:
+ * 1 = whole phrase, or every word verbatim; 2 = every word, some only fuzzily;
+ * 3 = enough words, all verbatim; 4 = enough words, some only fuzzily.
  */
-function fuzzyMatcher(query: string): Matcher {
-  const queryLower = query.toLowerCase().trim();
-  const tokens = queryLower.split(/\s+/).filter(t => t.length > 0);
+function fuzzyRelevance(
+  isPhrase: boolean,
+  matched: number,
+  fuzzy: number,
+  total: number,
+): Relevance {
+  if (isPhrase || (matched === total && fuzzy === 0)) return 1;
+  if (matched === total) return 2;
+  return fuzzy === 0 ? 3 : 4;
+}
+
+/** Indexes of the lines with the most query words (phrase lines first), in file order. */
+function bestLines(
+  lines: string[],
+  words: string[],
+  phrase: string,
+  findWord: WordFinder,
+): number[] {
+  if (words.length === 0) return [];
+
+  const scored: Array<{ index: number; isPhrase: boolean; count: number }> = [];
+  lines.forEach((line, index) => {
+    const lineLower = line.toLowerCase();
+    const count = words.filter(word => findWord(word, lineLower) !== null).length;
+    if (count > 0) scored.push({ index, isPhrase: lineLower.includes(phrase), count });
+  });
+
+  return scored
+    .sort(
+      (a, b) => Number(b.isPhrase) - Number(a.isPhrase) || b.count - a.count || a.index - b.index,
+    )
+    .slice(0, MAX_LINES_PER_FILE)
+    .map(s => s.index)
+    .sort((a, b) => a - b);
+}
+
+function strongerHit(a: WordHit, b: WordHit): WordHit {
+  if (a === 'verbatim' || b === 'verbatim') return 'verbatim';
+  return a ?? b;
+}
+
+/** Finds a query word in lowercased text: verbatim substring, else a fuzzy whole word. */
+type WordFinder = (word: string, textLower: string) => WordHit;
+
+function wordFinder(): WordFinder {
   // Notes repeat the same words constantly, so remember each verdict.
   const verdicts = new Map<string, boolean>();
 
@@ -213,20 +411,10 @@ function fuzzyMatcher(query: string): Matcher {
     return verdict;
   };
 
-  return text => {
-    if (tokens.length === 0) return null;
-    const textLower = text.toLowerCase();
-    if (textLower.includes(queryLower)) return PHRASE_MATCH;
-
-    let words: string[] | null = null;
-    let usedFuzzy = false;
-    for (const token of tokens) {
-      if (textLower.includes(token)) continue;
-      words ??= textLower.match(/\w+/g) || [];
-      if (!words.some(word => fuzzyMatchesWord(token, word))) return null;
-      usedFuzzy = true;
-    }
-    return usedFuzzy ? FUZZY_TOKEN_MATCH : ALL_TOKENS_MATCH;
+  return (word, textLower) => {
+    if (textLower.includes(word)) return 'verbatim';
+    const textWords = textLower.match(/\w+/g) || [];
+    return textWords.some(w => fuzzyMatchesWord(word, w)) ? 'fuzzy' : null;
   };
 }
 

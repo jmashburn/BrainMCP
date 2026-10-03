@@ -325,13 +325,28 @@ Fuzzy or exact search across vault filenames and content with relevance scoring.
 
 #### Features
 
-- Fuzzy search: every query word must appear in the line, verbatim or with a
-  small typo in a whole word (`documnt` finds `document`; `today` does not find
-  `someday`)
-- Optional exact substring matching
-- Results ranked best first, filename matches ahead of content matches with the same score
-- At most 3 matching lines per file, each cut to 200 characters; `total_matches`
-  above `total_files` means the limit cut results off
+- Fuzzy search scores each note as a whole (filename and content together) by
+  how many of the query's words it contains, anywhere in the note. A word
+  counts when it appears verbatim or with a small typo in a whole word
+  (`documnt` finds `document`; `today` does not find `someday`)
+  - Queries of 1–2 words need every word; longer queries need at least half,
+    so natural-language queries like "Grace site changes today" still find the
+    note about Grace's site even though it never says "today"
+  - Common words (the, a, an, of, to, in, on, and, or, for, is, are, what, how,
+    about, with) are ignored unless the query has nothing else
+  - One result per note. `match_type` is `filename` when the filename alone
+    holds the phrase or enough of the words, otherwise `content`; `matches` is
+    present whenever some lines hold query words
+  - Ranked: whole phrase first, then more query words, then verbatim over
+    fuzzy, then filename over content
+  - `relevance_score` (lower is better): 1 = whole phrase or every word
+    verbatim, 2 = every word but some only fuzzily, 3 = enough words, all
+    verbatim, 4 = enough words, some only fuzzily
+- Optional exact substring matching: the whole query is one literal string;
+  filename and content matches are separate results, filename first
+- At most 3 lines per file, those holding the most query words first, each cut
+  to 200 characters; `total_matches` above `total_files` means the limit cut
+  results off
 - File type filtering
 - Path pattern filtering
 
