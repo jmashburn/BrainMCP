@@ -6,7 +6,7 @@
  * all go through here.
  */
 
-import { GitVaultManager } from './git-vault-manager';
+import { DEFAULT_SYNC_INTERVAL_MS, GitVaultManager } from './git-vault-manager';
 import { guardVaultManager, parseProtectedPaths } from './path-guard';
 import { guidanceFiles } from './vault-conventions';
 import type { VaultManager } from './vault-manager';
@@ -34,7 +34,30 @@ export const DEFAULT_PROTECTED_PATHS = [
   BRAIN_PROTOCOL_PATH,
 ];
 
+const MS_PER_SECOND = 1000;
+
+/**
+ * VAULT_SYNC_INTERVAL_SECONDS → milliseconds. Unset or unparseable falls back
+ * to the default rather than 0: 0 means "fetch on every call", which is the
+ * slow path, and a typo should not silently select it.
+ */
+export function parseSyncIntervalMs(raw: string | undefined): number {
+  if (raw === undefined || raw.trim() === '') return DEFAULT_SYNC_INTERVAL_MS;
+
+  const seconds = Number(raw);
+  if (!Number.isFinite(seconds) || seconds < 0) {
+    logger.warn('Ignoring invalid VAULT_SYNC_INTERVAL_SECONDS; using the default', {
+      value: raw,
+      defaultSeconds: DEFAULT_SYNC_INTERVAL_MS / MS_PER_SECOND,
+    });
+    return DEFAULT_SYNC_INTERVAL_MS;
+  }
+
+  return seconds * MS_PER_SECOND;
+}
+
 export function createVaultManager(vaultPath: string): VaultManager {
+  const syncIntervalMs = parseSyncIntervalMs(process.env.VAULT_SYNC_INTERVAL_SECONDS);
   const base = new GitVaultManager({
     repoUrl: process.env.VAULT_REPO!,
     branch: process.env.VAULT_BRANCH!,
@@ -42,6 +65,7 @@ export function createVaultManager(vaultPath: string): VaultManager {
     gitUsername: process.env.GIT_USERNAME,
     vaultPath,
     hooksPath: process.env.VAULT_HOOKS_PATH,
+    syncIntervalMs,
   });
 
   const configured = parseProtectedPaths(process.env.VAULT_PROTECTED_PATHS);
@@ -58,6 +82,7 @@ export function createVaultManager(vaultPath: string): VaultManager {
     protectedPaths,
     source: configured.length > 0 ? 'VAULT_PROTECTED_PATHS' : 'default',
     hooksPath: process.env.VAULT_HOOKS_PATH ?? '(none)',
+    syncIntervalSeconds: syncIntervalMs / MS_PER_SECOND,
   });
 
   return guardVaultManager(base, protectedPaths);

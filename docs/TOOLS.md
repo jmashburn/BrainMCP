@@ -319,14 +319,19 @@ Fuzzy or exact search across vault filenames and content with relevance scoring.
 - `query` (string, required) - Search query string
 - `exact` (boolean, optional, default: false) - Use exact substring matching instead of fuzzy search
 - `file_types` (array of strings, optional, default: ["md"]) - Filter by file extensions
-- `limit` (number, optional, default: 50) - Maximum number of results
+- `limit` (number, optional, default: 20) - Maximum number of results
 - `path_filter` (string, optional) - Filter results by path pattern
+- `context_lines` (number, optional, default: 0, max: 2) - Lines of context around each matching line
 
 #### Features
 
-- Fuzzy search powered by fuse.js with relevance scoring
+- Fuzzy search: every query word must appear in the line, verbatim or with a
+  small typo in a whole word (`documnt` finds `document`; `today` does not find
+  `someday`)
 - Optional exact substring matching
-- Context lines around matches
+- Results ranked best first, filename matches ahead of content matches with the same score
+- At most 3 matching lines per file, each cut to 200 characters; `total_matches`
+  above `total_files` means the limit cut results off
 - File type filtering
 - Path pattern filtering
 

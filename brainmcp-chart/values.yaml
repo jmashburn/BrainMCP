@@ -32,6 +32,9 @@ vault:
   # Comma-separated write-deny globs. REPLACES the built-in defaults rather
   # than adding to them, so list everything. "" keeps the defaults.
   protectedPaths: ''
+  # Seconds a read may serve the clone before fetching again. Writes always
+  # fetch first. 0 fetches on every call, which makes search slow.
+  syncIntervalSeconds: 30
 
 git:
   # Required when the host is not github.com / bitbucket.org and does not

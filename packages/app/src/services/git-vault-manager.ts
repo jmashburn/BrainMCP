@@ -14,13 +14,47 @@ export interface VaultConfig {
   vaultPath: string;
   /** Vault-relative hooks dir (e.g. '.githooks'), applied as core.hooksPath on clone. */
   hooksPath?: string;
+  /**
+   * How long reads may serve the existing clone before fetching again.
+   * 0 fetches on every call. Writes always fetch first, whatever this says.
+   */
+  syncIntervalMs?: number;
 }
+
+export type GitFactory = (baseDir?: string) => SimpleGit;
+
+/**
+ * 'fresh' means the clone matches the remote as of this sync. 'stale' means the
+ * remote could not be reached, so the clone is intact but possibly behind:
+ * fine to read, not fine to commit onto.
+ */
+type SyncOutcome = 'fresh' | 'stale';
+
+export const DEFAULT_SYNC_INTERVAL_MS = 30_000;
+export const FETCH_TIMEOUT_MS = 5_000;
+const PUSH_MAX_ATTEMPTS = 3;
 
 export class GitVaultManager implements VaultManager {
   private config: VaultConfig;
+  private createGit: GitFactory;
+  private syncIntervalMs: number;
 
-  constructor(config: VaultConfig) {
+  // Every git command that touches the working tree (sync, commit, push) runs
+  // through this queue. Without it a read-triggered `reset --hard` + `clean`
+  // could land between a write's file change and its commit and silently
+  // discard the write, and two writes could race for the index lock.
+  private gitQueue: Promise<unknown> = Promise.resolve();
+  private readSyncInFlight: Promise<SyncOutcome> | null = null;
+  // Gates the interval. Set on every completed attempt, including one that
+  // could not reach the remote, so an outage costs one fetch timeout per
+  // interval rather than one per file read.
+  private lastSyncAttemptAt: number | null = null;
+  private lastSuccessfulSyncAt: number | null = null;
+
+  constructor(config: VaultConfig, createGit?: GitFactory) {
     this.config = config;
+    this.createGit = createGit ?? (baseDir => this.createGitInstance(baseDir));
+    this.syncIntervalMs = config.syncIntervalMs ?? DEFAULT_SYNC_INTERVAL_MS;
   }
 
   private createGitInstance(baseDir?: string): SimpleGit {
@@ -64,22 +98,91 @@ export class GitVaultManager implements VaultManager {
   }
 
   /**
-   * Initialize the vault (clone or sync on every invocation)
-   * - Cold start: Clone the repo if it doesn't exist
-   * - Warm start: Sync with remote on every request
+   * Bring the clone up to date before a read, at most once per sync interval.
+   *
+   * Concurrent readers share one in-flight sync: a search reads every note in
+   * parallel batches, and one fetch per file both took tens of seconds and let
+   * overlapping fetches collide.
    */
   private async initialize(): Promise<void> {
-    const vaultExists = existsSync(this.config.vaultPath);
+    if (this.isSyncCurrent()) return;
 
-    if (!vaultExists) {
+    if (!this.readSyncInFlight) {
+      this.readSyncInFlight = this.exclusive(async () =>
+        // A write may have synced while this waited in the queue.
+        this.isSyncCurrent() ? 'fresh' : this.sync(),
+      ).finally(() => {
+        this.readSyncInFlight = null;
+      });
+    }
+
+    await this.readSyncInFlight;
+  }
+
+  /**
+   * Run a change against a freshly synced clone, holding the git queue from
+   * the sync through the push. Committing onto a clone that could not be
+   * synced risks a rejected push or a commit built on an outdated note, so a
+   * stale sync refuses the write instead.
+   */
+  private async mutate(work: () => Promise<void>): Promise<void> {
+    await this.exclusive(async () => {
+      if ((await this.sync()) === 'stale') {
+        throw new Error(
+          'Vault could not be synced with the remote, so the change was not made. Try again shortly.',
+        );
+      }
+      await work();
+    });
+  }
+
+  private isSyncCurrent(): boolean {
+    return (
+      this.syncIntervalMs > 0 &&
+      this.lastSyncAttemptAt !== null &&
+      Date.now() - this.lastSyncAttemptAt < this.syncIntervalMs &&
+      this.hasClone()
+    );
+  }
+
+  private hasClone(): boolean {
+    return existsSync(path.join(this.config.vaultPath, '.git'));
+  }
+
+  private exclusive<T>(task: () => Promise<T>): Promise<T> {
+    const run = this.gitQueue.then(task, task);
+    // The queue only orders work; a failed task must not poison the next one.
+    this.gitQueue = run.catch(() => undefined);
+    return run;
+  }
+
+  /**
+   * Clone if there is no clone, otherwise sync with the remote.
+   * Callers must hold the git queue.
+   */
+  private async sync(): Promise<SyncOutcome> {
+    if (!this.hasClone()) {
       logger.info('Cloning vault', {
         repoUrl: this.sanitizeUrl(this.config.repoUrl),
         branch: this.config.branch,
       });
+      await this.removeVault();
       await this.cloneVault();
-    } else {
-      logger.debug('Vault exists, syncing with remote');
-      await this.syncVault();
+      this.recordSync('fresh');
+      return 'fresh';
+    }
+
+    logger.debug('Vault exists, syncing with remote');
+    const outcome = await this.syncVault();
+    this.recordSync(outcome);
+    return outcome;
+  }
+
+  private recordSync(outcome: SyncOutcome): void {
+    const now = Date.now();
+    this.lastSyncAttemptAt = now;
+    if (outcome === 'fresh') {
+      this.lastSuccessfulSyncAt = now;
     }
   }
 
@@ -97,7 +200,7 @@ export class GitVaultManager implements VaultManager {
    * Clone the vault repository (cold start)
    */
   private async cloneVault(): Promise<void> {
-    const tempGit = this.createGitInstance();
+    const tempGit = this.createGit();
     const authUrl = this.getAuthenticatedUrl();
 
     await tempGit.clone(authUrl, this.config.vaultPath, {
@@ -106,7 +209,7 @@ export class GitVaultManager implements VaultManager {
       '--single-branch': null,
     });
 
-    const vaultGit = this.createGitInstance(this.config.vaultPath);
+    const vaultGit = this.createGit(this.config.vaultPath);
     await vaultGit.addConfig('user.name', 'Obsidian MCP Server');
     await vaultGit.addConfig('user.email', 'mcp@obsidian.local');
 
@@ -129,25 +232,42 @@ export class GitVaultManager implements VaultManager {
 
   /**
    * Sync vault with remote (warm start)
+   *
+   * Only a broken local repository is worth deleting and re-cloning. A fetch
+   * that fails is a remote problem — network, timeout, auth — which a re-clone
+   * needs the same remote to fix, so deleting first would turn a slightly
+   * stale vault into no vault at all, and do it under any read in flight.
    */
-  private async syncVault(): Promise<void> {
+  private async syncVault(): Promise<SyncOutcome> {
     const startTime = Date.now();
-    const vaultGit = this.createGitInstance(this.config.vaultPath);
+    const vaultGit = this.createGit(this.config.vaultPath);
     const authUrl = this.getAuthenticatedUrl();
 
+    // Local-only checks: these fail when the repository itself is unusable.
     try {
       // Set the remote URL with embedded credentials for authenticated operations
       await vaultGit.remote(['set-url', 'origin', authUrl]);
+      await vaultGit.revparse(['HEAD']);
+    } catch (error) {
+      return this.recloneBrokenVault('Local repository is unusable', error, startTime);
+    }
 
-      // Fetch latest remote state with timeout
+    try {
       logger.debug('Fetching latest changes from remote');
-      await Promise.race([
-        vaultGit.fetch('origin', this.config.branch),
-        new Promise<void>((_, reject) =>
-          setTimeout(() => reject(new Error('Fetch timeout')), 5000),
-        ),
-      ]);
+      await this.fetchWithTimeout(vaultGit);
+    } catch (error) {
+      logger.warn('Fetch failed; serving the existing vault until the next sync', {
+        error,
+        durationMs: Date.now() - startTime,
+        branch: this.config.branch,
+        lastSuccessfulSyncAt: this.lastSuccessfulSyncAt
+          ? new Date(this.lastSuccessfulSyncAt).toISOString()
+          : null,
+      });
+      return 'stale';
+    }
 
+    try {
       // Only reset when the remote actually moved. Compare local HEAD to the
       // fetched remote tip; if equal, the working tree already matches and a
       // hard reset + clean would be pure churn on every tool call.
@@ -162,7 +282,7 @@ export class GitVaultManager implements VaultManager {
           branch: this.config.branch,
           head: localHead.trim().slice(0, 8),
         });
-        return;
+        return 'fresh';
       }
 
       // Remote moved: reset to it exactly and drop any local cruft.
@@ -176,15 +296,40 @@ export class GitVaultManager implements VaultManager {
         from: localHead.trim().slice(0, 8),
         to: remoteHead.trim().slice(0, 8),
       });
+      return 'fresh';
     } catch (error) {
-      logger.error('Sync failed, removing vault and performing fresh clone', {
-        error,
-        durationMs: Date.now() - startTime,
-        branch: this.config.branch,
-      });
-      await this.removeVault();
-      await this.cloneVault();
+      // The fetch succeeded, so the remote is reachable and a re-clone can work.
+      return this.recloneBrokenVault('Could not reset to the fetched remote', error, startTime);
     }
+  }
+
+  private async fetchWithTimeout(vaultGit: SimpleGit): Promise<void> {
+    let timer: NodeJS.Timeout | undefined;
+    try {
+      await Promise.race([
+        vaultGit.fetch('origin', this.config.branch),
+        new Promise<never>((_, reject) => {
+          timer = setTimeout(() => reject(new Error('Fetch timeout')), FETCH_TIMEOUT_MS);
+        }),
+      ]);
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  private async recloneBrokenVault(
+    reason: string,
+    error: unknown,
+    startTime: number,
+  ): Promise<SyncOutcome> {
+    logger.error(`${reason}; removing vault and performing fresh clone`, {
+      error,
+      durationMs: Date.now() - startTime,
+      branch: this.config.branch,
+    });
+    await this.removeVault();
+    await this.cloneVault();
+    return 'fresh';
   }
 
   /**
@@ -192,7 +337,7 @@ export class GitVaultManager implements VaultManager {
    * Private method - called automatically after write operations
    */
   private async commitAndPush(message: string, affectedFiles: string[]): Promise<void> {
-    const vaultGit = this.createGitInstance(this.config.vaultPath);
+    const vaultGit = this.createGit(this.config.vaultPath);
 
     if (affectedFiles.length > 0) {
       await vaultGit.raw(['add', '-A', ...affectedFiles]);
@@ -207,7 +352,7 @@ export class GitVaultManager implements VaultManager {
     }
 
     await vaultGit.commit(message);
-    await this.pushWithRetry(vaultGit, 3);
+    await this.pushWithRetry(vaultGit, PUSH_MAX_ATTEMPTS);
   }
 
   /**
@@ -264,14 +409,15 @@ export class GitVaultManager implements VaultManager {
    * Automatically commits and pushes the change
    */
   async writeFile(relativePath: string, content: string): Promise<void> {
-    await this.initialize();
-    const fullPath = path.join(this.config.vaultPath, relativePath);
+    await this.mutate(async () => {
+      const fullPath = path.join(this.config.vaultPath, relativePath);
 
-    const dir = path.dirname(fullPath);
-    await fs.mkdir(dir, { recursive: true });
+      const dir = path.dirname(fullPath);
+      await fs.mkdir(dir, { recursive: true });
 
-    await fs.writeFile(fullPath, content, 'utf-8');
-    await this.commitAndPush(`Update file: ${relativePath}`, [relativePath]);
+      await fs.writeFile(fullPath, content, 'utf-8');
+      await this.commitAndPush(`Update file: ${relativePath}`, [relativePath]);
+    });
 
     logger.debug('File written successfully', {
       path: relativePath,
@@ -284,24 +430,25 @@ export class GitVaultManager implements VaultManager {
    * Automatically commits and pushes the change
    */
   async deleteFile(relativePath: string): Promise<void> {
-    await this.initialize();
-    const fullPath = path.join(this.config.vaultPath, relativePath);
+    await this.mutate(async () => {
+      const fullPath = path.join(this.config.vaultPath, relativePath);
 
-    try {
-      const stats = await this.getFileStats(relativePath);
-      if (stats.isDirectory) {
-        throw new Error(`Cannot delete ${relativePath}: it is a directory`);
+      try {
+        const stats = await this.getFileStats(relativePath);
+        if (stats.isDirectory) {
+          throw new Error(`Cannot delete ${relativePath}: it is a directory`);
+        }
+
+        await fs.unlink(fullPath);
+        await this.commitAndPush(`Delete file: ${relativePath}`, [relativePath]);
+      } catch (error: any) {
+        throw new Error(`Failed to delete file ${relativePath}: ${error.message}`);
       }
+    });
 
-      await fs.unlink(fullPath);
-      await this.commitAndPush(`Delete file: ${relativePath}`, [relativePath]);
-
-      logger.debug('File deleted successfully', {
-        path: relativePath,
-      });
-    } catch (error: any) {
-      throw new Error(`Failed to delete file ${relativePath}: ${error.message}`);
-    }
+    logger.debug('File deleted successfully', {
+      path: relativePath,
+    });
   }
 
   /**
@@ -309,15 +456,16 @@ export class GitVaultManager implements VaultManager {
    * Automatically commits and pushes the change
    */
   async moveFile(sourcePath: string, destPath: string): Promise<void> {
-    await this.initialize();
-    const fullSourcePath = path.join(this.config.vaultPath, sourcePath);
-    const fullDestPath = path.join(this.config.vaultPath, destPath);
+    await this.mutate(async () => {
+      const fullSourcePath = path.join(this.config.vaultPath, sourcePath);
+      const fullDestPath = path.join(this.config.vaultPath, destPath);
 
-    const destDir = path.dirname(fullDestPath);
-    await fs.mkdir(destDir, { recursive: true });
+      const destDir = path.dirname(fullDestPath);
+      await fs.mkdir(destDir, { recursive: true });
 
-    await fs.rename(fullSourcePath, fullDestPath);
-    await this.commitAndPush(`Move file: ${sourcePath} → ${destPath}`, [sourcePath, destPath]);
+      await fs.rename(fullSourcePath, fullDestPath);
+      await this.commitAndPush(`Move file: ${sourcePath} → ${destPath}`, [sourcePath, destPath]);
+    });
   }
 
   /**
@@ -404,13 +552,15 @@ export class GitVaultManager implements VaultManager {
 
   /**
    * Get file stats (private helper method)
+   *
+   * Does not sync: its only caller already holds a freshly synced clone, and
+   * syncing here would queue behind that caller and never run.
    */
   private async getFileStats(relativePath: string): Promise<{
     size: number;
     modified: Date;
     isDirectory: boolean;
   }> {
-    await this.initialize();
     const fullPath = path.join(this.config.vaultPath, relativePath);
 
     try {

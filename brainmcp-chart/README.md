@@ -119,6 +119,7 @@ helm upgrade brainmcp ./brainmcp-chart -n brain --reuse-values \
 | `image.tag`                                                               | `latest`     | Pin a `main-<sha>` tag for reproducible installs                                   |
 | `vault.hooksPath`                                                         | `.githooks`  | The vault's own pre-commit runs on the server's writes. Applied at clone time only |
 | `vault.guidanceFiles`                                                     | Brain layout | Served as a resource and write-protected                                           |
+| `vault.syncIntervalSeconds`                                               | `30`         | Reads fetch at most this often; writes always fetch first. `0` = every call        |
 | `server.exposedTools`                                                     | `""` (all)   | Allowlist; omitted tools disappear from `tools/list`                               |
 | `conventions.*`                                                           | Brain layout | Inbox, tasks, templates and journal locations                                      |
 | `replicaCount`                                                            | `1`          | More than 1 is refused: sessions live in memory                                    |

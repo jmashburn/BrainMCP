@@ -1,6 +1,11 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { ToolHarness } from '@tests/support/harness/tool-harness.js';
 import { InMemoryVaultManager } from '@tests/support/doubles/in-memory-vault-manager.js';
+import {
+  DEFAULT_SEARCH_LIMIT,
+  MAX_LINE_LENGTH,
+  MAX_LINES_PER_FILE,
+} from '@/mcp/handlers/search-handlers';
 
 let harness: ToolHarness;
 
@@ -23,6 +28,7 @@ describe('Search tool behaviours', () => {
         exact: true,
         file_types: ['md'],
         path_filter: 'Notes/.*',
+        context_lines: 2,
       });
 
       expect(result.success).toBe(true);
@@ -93,7 +99,7 @@ describe('Search tool behaviours', () => {
       expect(result.data.results.length).toBeLessThanOrEqual(2);
     });
 
-    it('finds multiple content matches in single file', async () => {
+    it('caps line matches per file at MAX_LINES_PER_FILE', async () => {
       const vault = new InMemoryVaultManager({
         'Notes/multi.md': ['First match', 'No match', 'Second match', 'Third match'].join('\n'),
       });
@@ -107,7 +113,8 @@ describe('Search tool behaviours', () => {
       expect(result.success).toBe(true);
       expect(result.data.results).toHaveLength(1);
       expect(result.data.results[0].match_type).toBe('content');
-      expect(result.data.results[0].matches).toHaveLength(4);
+      expect(result.data.results[0].matches.map((m: any) => m.line)).toEqual([1, 2, 3]);
+      expect(MAX_LINES_PER_FILE).toBe(3);
     });
 
     it('properly handles special characters in search query', async () => {
@@ -245,7 +252,21 @@ describe('Search tool behaviours', () => {
   });
 
   describe('Context lines', () => {
-    it('always includes 2 lines of context for content matches', async () => {
+    it('includes no context lines by default', async () => {
+      const vault = new InMemoryVaultManager({
+        'Notes/doc.md': ['Line 1', 'Line 2', 'Line 3 with match', 'Line 4', 'Line 5'].join('\n'),
+      });
+      harness = new ToolHarness({ vault });
+
+      const result = await harness.invoke('search-vault', { query: 'match', exact: true });
+
+      expect(result.success).toBe(true);
+      const match = result.data.results[0].matches[0];
+      expect(match.context_before).toEqual([]);
+      expect(match.context_after).toEqual([]);
+    });
+
+    it('includes up to context_lines lines of context when asked', async () => {
       const vault = new InMemoryVaultManager({
         'Notes/doc.md': ['Line 1', 'Line 2', 'Line 3 with match', 'Line 4', 'Line 5'].join('\n'),
       });
@@ -254,6 +275,7 @@ describe('Search tool behaviours', () => {
       const result = await harness.invoke('search-vault', {
         query: 'match',
         exact: true,
+        context_lines: 2,
       });
 
       expect(result.success).toBe(true);
@@ -273,6 +295,7 @@ describe('Search tool behaviours', () => {
       const result = await harness.invoke('search-vault', {
         query: 'match',
         exact: true,
+        context_lines: 2,
       });
 
       expect(result.success).toBe(true);
@@ -360,7 +383,7 @@ describe('Search tool behaviours', () => {
       expect(result.data.results.every((r: any) => r.path.endsWith('.md'))).toBe(true);
     });
 
-    it('defaults to limit of 50 when not specified', async () => {
+    it('defaults to a limit of 20 when not specified', async () => {
       const vault = new InMemoryVaultManager(
         Object.fromEntries(Array.from({ length: 100 }, (_, i) => [`Notes/file${i}.md`, 'match'])),
       );
@@ -372,7 +395,92 @@ describe('Search tool behaviours', () => {
       });
 
       expect(result.success).toBe(true);
-      expect(result.data.results.length).toBeLessThanOrEqual(50);
+      expect(result.data.results).toHaveLength(DEFAULT_SEARCH_LIMIT);
+      expect(DEFAULT_SEARCH_LIMIT).toBe(20);
+    });
+
+    it('reports total_matches beyond the limit so callers know more exist', async () => {
+      const vault = new InMemoryVaultManager(
+        Object.fromEntries(Array.from({ length: 5 }, (_, i) => [`Notes/file${i}.md`, 'match'])),
+      );
+      harness = new ToolHarness({ vault });
+
+      const result = await harness.invoke('search-vault', { query: 'match', limit: 2 });
+
+      expect(result.data).toMatchObject({ total_matches: 5, total_files: 2 });
+    });
+  });
+
+  describe('Output size', () => {
+    it('truncates long matching lines to MAX_LINE_LENGTH characters', async () => {
+      const longLine = 'needle ' + 'x'.repeat(5000);
+      const vault = new InMemoryVaultManager({ 'Notes/long.md': longLine });
+      harness = new ToolHarness({ vault });
+
+      const result = await harness.invoke('search-vault', { query: 'needle' });
+
+      const content = result.data.results[0].matches[0].content;
+      expect(content).toBe(longLine.slice(0, MAX_LINE_LENGTH) + '…');
+    });
+
+    it('sends the result once as compact JSON text alongside structuredContent', async () => {
+      const vault = new InMemoryVaultManager({ 'Notes/doc.md': 'keyword here' });
+      harness = new ToolHarness({ vault });
+
+      const result = await harness.invoke('search-vault', { query: 'keyword' });
+
+      expect(result.formatted.content).toHaveLength(1);
+      expect(result.text).toBe(JSON.stringify(result.formatted.structuredContent));
+    });
+  });
+
+  describe('Fuzzy precision and ranking', () => {
+    it('does not match "today" against someday.md or the word "someday"', async () => {
+      const vault = new InMemoryVaultManager({
+        '10-Tasks/someday.md': ['# Someday', '', 'Things to do someday, maybe.'].join('\n'),
+        'Notes/plan.md': 'What I did today',
+      });
+      harness = new ToolHarness({ vault });
+
+      const result = await harness.invoke('search-vault', { query: 'today' });
+
+      expect(result.data.results.map((r: any) => r.path)).toEqual(['Notes/plan.md']);
+    });
+
+    it('still tolerates a typo in a longer word', async () => {
+      const vault = new InMemoryVaultManager({
+        'Notes/doc.md': 'This document contains important information',
+      });
+      harness = new ToolHarness({ vault });
+
+      const result = await harness.invoke('search-vault', { query: 'documnt' });
+
+      expect(result.data.results).toEqual([
+        expect.objectContaining({
+          path: 'Notes/doc.md',
+          match_type: 'content',
+          relevance_score: 3,
+        }),
+      ]);
+    });
+
+    it('ranks filename matches and stronger matches ahead of vault order', async () => {
+      const vault = new InMemoryVaultManager({
+        'A/aaa.md': 'notes about the deployment checklist',
+        'B/bbb.md': 'a line with a typo: deploymnt',
+        'C/deployment.md': 'unrelated body',
+      });
+      harness = new ToolHarness({ vault });
+
+      const typo = await harness.invoke('search-vault', { query: 'deploymnt' });
+      const exactWord = await harness.invoke('search-vault', { query: 'deployment' });
+
+      expect(typo.data.results[0].path).toBe('B/bbb.md'); // verbatim beats fuzzy
+      expect(exactWord.data.results.map((r: any) => `${r.match_type}:${r.path}`)).toEqual([
+        'filename:C/deployment.md',
+        'content:A/aaa.md',
+        'content:B/bbb.md',
+      ]);
     });
   });
 });
