@@ -459,7 +459,7 @@ describe('Search tool behaviours', () => {
         expect.objectContaining({
           path: 'Notes/doc.md',
           match_type: 'content',
-          relevance_score: 3,
+          relevance_score: 2, // every word present, one only fuzzily
         }),
       ]);
     });
@@ -481,6 +481,160 @@ describe('Search tool behaviours', () => {
         'content:A/aaa.md',
         'content:B/bbb.md',
       ]);
+    });
+  });
+
+  describe('Query word coverage (fuzzy)', () => {
+    const graceNote = [
+      '# Grace',
+      '',
+      'Notes on the site build.',
+      'Client asked for changes to the header.',
+    ].join('\n');
+
+    it('matches a note holding most query words on different lines', async () => {
+      const vault = new InMemoryVaultManager({
+        'Clients/Mash and Burn Co.md': graceNote,
+        'Notes/unrelated.md': 'Nothing relevant here',
+      });
+      harness = new ToolHarness({ vault });
+
+      const result = await harness.invoke('search-vault', { query: 'Grace site changes today' });
+
+      expect(result.data.results.map((r: any) => r.path)).toEqual(['Clients/Mash and Burn Co.md']);
+      expect(result.data.results[0].relevance_score).toBe(3); // enough words, all verbatim
+    });
+
+    it('does not let a note with only one of the words outrank fuller coverage', async () => {
+      const vault = new InMemoryVaultManager({
+        'Journal/today.md': 'today today today',
+        'Journal/site-today.md': 'The site went live today',
+        'Clients/Mash and Burn Co.md': graceNote,
+      });
+      harness = new ToolHarness({ vault });
+
+      const result = await harness.invoke('search-vault', { query: 'Grace site changes today' });
+
+      // today.md covers 1 of 4 words, under the 2 required; site-today.md covers 2.
+      expect(result.data.results.map((r: any) => r.path)).toEqual([
+        'Clients/Mash and Burn Co.md',
+        'Journal/site-today.md',
+      ]);
+    });
+
+    it('counts filename words toward coverage', async () => {
+      const vault = new InMemoryVaultManager({
+        'Clients/Grace.md': 'Launch checklist',
+        'Notes/other.md': 'site changes elsewhere',
+      });
+      harness = new ToolHarness({ vault });
+
+      // Grace.md: "grace" in the filename + "launch" in content = 2 of 3 words.
+      const result = await harness.invoke('search-vault', { query: 'grace launch today' });
+
+      expect(result.data.results.map((r: any) => r.path)).toEqual(['Clients/Grace.md']);
+    });
+
+    it('requires every word of a two-word query', async () => {
+      const vault = new InMemoryVaultManager({
+        'Notes/both.md': ['grace', 'invoice'].join('\n'),
+        'Notes/one.md': 'grace only',
+      });
+      harness = new ToolHarness({ vault });
+
+      const result = await harness.invoke('search-vault', { query: 'grace invoice' });
+
+      expect(result.data.results.map((r: any) => r.path)).toEqual(['Notes/both.md']);
+    });
+
+    it('requires the word of a single-word query', async () => {
+      const vault = new InMemoryVaultManager({ 'Notes/doc.md': 'something else entirely' });
+      harness = new ToolHarness({ vault });
+
+      const result = await harness.invoke('search-vault', { query: 'grace' });
+
+      expect(result.data.results).toEqual([]);
+    });
+
+    it('ignores stop words when counting coverage', async () => {
+      const vault = new InMemoryVaultManager({
+        // "changed" and "site" are the only meaningful words: 2 of 2.
+        'Notes/site.md': 'We changed the site navigation',
+        'Notes/stop.md': 'what is the point of it, and how about now',
+      });
+      harness = new ToolHarness({ vault });
+
+      const result = await harness.invoke('search-vault', { query: 'what changed about the site' });
+
+      expect(result.data.results.map((r: any) => r.path)).toEqual(['Notes/site.md']);
+    });
+
+    it('falls back to stop words when the query has nothing else', async () => {
+      const vault = new InMemoryVaultManager({
+        'Notes/how.md': 'how to do it',
+        'Notes/none.md': 'nothing here',
+      });
+      harness = new ToolHarness({ vault });
+
+      const result = await harness.invoke('search-vault', { query: 'how to' });
+
+      expect(result.data.results.map((r: any) => r.path)).toEqual(['Notes/how.md']);
+    });
+
+    it('ranks phrase, then coverage, then verbatim over fuzzy, then filename', async () => {
+      const vault = new InMemoryVaultManager({
+        'A/fuzzy.md': 'deploymnt pipeline release', // 3/3, one fuzzy
+        'B/partial.md': 'deployment pipeline', // 2/3 verbatim
+        'C/words.md': 'release the deployment, then the pipeline', // 3/3 verbatim
+        'D/phrase.md': 'deployment pipeline release notes', // phrase in content
+        'E/deployment pipeline release.md': 'body', // phrase in filename
+      });
+      harness = new ToolHarness({ vault });
+
+      const result = await harness.invoke('search-vault', {
+        query: 'deployment pipeline release',
+      });
+
+      expect(result.data.results.map((r: any) => `${r.match_type}:${r.path}`)).toEqual([
+        'filename:E/deployment pipeline release.md',
+        'content:D/phrase.md',
+        'content:C/words.md',
+        'content:A/fuzzy.md',
+        'content:B/partial.md',
+      ]);
+    });
+
+    it('shows the lines holding the most query words first', async () => {
+      const vault = new InMemoryVaultManager({
+        'Notes/doc.md': [
+          'site', // 1 word
+          'grace', // 1 word
+          'grace site changes', // 3 words
+          'changes site', // 2 words
+          'unrelated',
+        ].join('\n'),
+      });
+      harness = new ToolHarness({ vault });
+
+      const result = await harness.invoke('search-vault', { query: 'grace site changes today' });
+
+      // The best three by word count (earliest among equals), shown in file order.
+      expect(result.data.results[0].matches.map((m: any) => m.line)).toEqual([1, 3, 4]);
+    });
+
+    it('leaves exact mode as a single literal substring', async () => {
+      const vault = new InMemoryVaultManager({
+        'Clients/Mash and Burn Co.md': graceNote,
+        'Notes/literal.md': 'grace site changes today',
+      });
+      harness = new ToolHarness({ vault });
+
+      const result = await harness.invoke('search-vault', {
+        query: 'Grace site changes today',
+        exact: true,
+      });
+
+      expect(result.data.results.map((r: any) => r.path)).toEqual(['Notes/literal.md']);
     });
   });
 });

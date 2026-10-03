@@ -241,7 +241,9 @@ export const SearchVaultSchema = {
           .number()
           .min(1)
           .max(4)
-          .describe('Match quality: 1=excellent, 2=good, 3=fair, 4=poor'),
+          .describe(
+            'Match quality, lower is better. Fuzzy: 1=whole phrase or every word verbatim, 2=every word (some fuzzy), 3=enough words verbatim, 4=enough words (some fuzzy)',
+          ),
         matches: z
           .array(
             z.object({
@@ -253,7 +255,7 @@ export const SearchVaultSchema = {
           )
           .optional()
           .describe(
-            `Up to ${MAX_LINES_PER_FILE} of the best matching lines, each cut to ${MAX_LINE_LENGTH} characters (only present for content matches)`,
+            `Up to ${MAX_LINES_PER_FILE} of the best matching lines, each cut to ${MAX_LINE_LENGTH} characters (present when lines matched; exact-mode filename results have none)`,
           ),
       }),
     ),
